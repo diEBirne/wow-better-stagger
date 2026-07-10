@@ -1,0 +1,15 @@
+## Interface: 120007
+## Title: Better Stagger
+## Notes: A scalable Stagger bar for Brewmaster Monks.
+## Author: di3Birne
+## Version: 0.1.0
+## Category: Class
+## IconTexture: Interface\Icons\spell_monk_brewmaster_spec
+## SavedVariables: BetterStaggerDB
+
+Defaults.lua
+Utils.lua
+Bar.lua
+Core.lua
+ConfigPanel.lua
+Slash.lua
