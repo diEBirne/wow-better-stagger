@@ -1,0 +1,18 @@
+---
+description: General repository rules
+alwaysApply: true
+---
+
+# General Repository Rules
+
+- Follow the instructions in `AGENTS.md` if present.
+- Make small, focused changes.
+- Prefer existing patterns in this repository.
+- Do not introduce new dependencies without asking first.
+- Do not modify secrets, credentials, environment files, generated files, or build artifacts.
+- Do not perform unrelated refactorings.
+- Do not commit, push, deploy, or modify production systems.
+- Add or update tests for behavior changes when practical.
+- Run relevant checks before considering the task complete.
+- If checks cannot be run, explain why.
+- Summarize changed files, tests run, and remaining risks.

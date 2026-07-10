@@ -1,0 +1,55 @@
+---
+alwaysApply: true
+---
+
+---
+description: Maintain durable project knowledge and prevent repeated mistakes
+alwaysApply: true
+---
+
+# Project Memory Maintenance
+
+When working in this repository, do not rely only on chat context.
+
+If you discover durable project knowledge, recurring pitfalls, setup details, test quirks, architecture conventions, data format details, or workflow rules that future agents should know, propose an update to `AGENTS.md` or `.cursor/rules/*.mdc`.
+
+## What should be remembered
+
+Examples of durable knowledge:
+
+- correct setup, test, build, and app start commands
+- known test pitfalls or hanging commands
+- CI-specific behavior
+- data format rules
+- important input/output mappings
+- repository directory semantics
+- architecture conventions
+- generated/reference-only directories
+- customer terminology relevant to implementation
+- recurring bugs and their root causes
+- rules that prevent accidental regressions
+
+## How to update instructions
+
+- Prefer updating existing sections instead of creating duplicates.
+- Keep entries concise and factual.
+- Base updates on observed project evidence.
+- Mark uncertain items as assumptions.
+- Do not include secrets, credentials, tokens, private customer data, or raw sensitive sample data.
+- Do not add one-off task details that are unlikely to matter later.
+
+## End-of-task requirement
+
+At the end of every non-trivial task, include:
+
+```text
+Project memory updates:
+- No update needed.
+
+or:
+Project memory updates:
+- Proposed update to AGENTS.md: ...
+- Proposed update to .cursor/rules/...
+
+If the update is small, safe, and clearly useful, you may edit the instruction files, but the user must review the diff before commit.
+
