@@ -7,7 +7,6 @@ local elapsedSinceUpdate = 0
 local testModeElapsed = 0
 local TEST_MODE_INTERVAL = 1.0
 local lastSoundTime = 0
-local dynamicSamples = {}
 local onUpdateActive = true
 
 local lastState = {
@@ -20,70 +19,21 @@ local lastState = {
 
 local eventFrame = CreateFrame("Frame")
 
-function addon:ResetDynamicSamples()
-    dynamicSamples = {}
-end
-
 function addon:RandomizeTestStagger()
     local scaleMaximum = self:GetCurrentScaleMaximum()
     local upperBound = math.max(1, math.floor(scaleMaximum + 100))
     self.testStaggerPercent = math.random(0, upperBound)
 end
 
-function addon:UpdateDynamicPeak(staggerPercent)
-    if self.db.scale.mode ~= "dynamic" then
-        return
-    end
-
-    local now = GetTime()
-    dynamicSamples[#dynamicSamples + 1] = { time = now, percent = staggerPercent }
-
-    local window = self.db.scale.dynamicWindowSeconds or 15
-    local cutoff = now - window
-    local writeIndex = 1
-
-    for index = 1, #dynamicSamples do
-        local sample = dynamicSamples[index]
-        if sample.time >= cutoff then
-            dynamicSamples[writeIndex] = sample
-            writeIndex = writeIndex + 1
-        end
-    end
-
-    for index = writeIndex, #dynamicSamples do
-        dynamicSamples[index] = nil
-    end
-end
-
 function addon:GetCurrentScaleMaximum()
-    local scale = self.db.scale
-
-    if scale.mode == "dynamic" then
-        local peak = 0
-        for index = 1, #dynamicSamples do
-            local percent = dynamicSamples[index].percent
-            if percent > peak then
-                peak = percent
-            end
-        end
-
-        if peak <= 0 then
-            return scale.dynamicMinimumMaximum or 100
-        end
-
-        local rawDynamicMax = peak * (1 + (scale.dynamicBufferPercent or 25) / 100)
-        local rounded = self:RoundUpToStep(rawDynamicMax, scale.dynamicRoundingStep or 50)
-        return self:Clamp(
-            rounded,
-            scale.dynamicMinimumMaximum or 100,
-            scale.dynamicMaximumMaximum or 600
-        )
-    end
-
-    return scale.fixedMaximum or 400
+    return self.db.scale.fixedMaximum or 400
 end
 
 function addon:ShouldShowBar(staggerAmount)
+    if self:IsInEditMode() then
+        return true
+    end
+
     if self.testMode then
         return true
     end
@@ -140,14 +90,9 @@ function addon:UpdateSound(staggerPercent)
         return
     end
 
-    local soundFile = soundConfig.soundFile or "RaidWarning"
-    if SOUNDKIT and SOUNDKIT[soundFile] then
-        PlaySound(SOUNDKIT[soundFile])
-    else
-        PlaySound(soundFile)
+    if self:PlayAlertSound(soundConfig.soundFile) then
+        lastSoundTime = now
     end
-
-    lastSoundTime = now
 end
 
 function addon:Update(force)
@@ -160,11 +105,13 @@ function addon:Update(force)
         local healthMax = UnitHealthMax("player") or 1
         staggerAmount = (self.testStaggerPercent / 100) * healthMax
         staggerPercent = self.testStaggerPercent
+    elseif self:IsInEditMode() then
+        staggerPercent = 55
+        local healthMax = UnitHealthMax("player") or 1
+        staggerAmount = (staggerPercent / 100) * healthMax
     else
         staggerAmount, _, staggerPercent = self:GetStaggerData()
     end
-
-    self:UpdateDynamicPeak(staggerPercent)
 
     local scaleMaximum = self:GetCurrentScaleMaximum()
     if scaleMaximum <= 0 then
@@ -262,11 +209,24 @@ function addon:InitCore()
             if addon.InitConfigPanel then
                 addon:InitConfigPanel()
             end
+            if addon.InitEditMode then
+                addon:InitEditMode()
+            end
+            if addon.InitEssentialCooldownWidthHook then
+                addon:InitEssentialCooldownWidthHook()
+            end
             if addon.InitSlash then
                 addon:InitSlash()
             end
+            addon:ApplyBarPosition()
             addon:Update(true)
             return
+        end
+
+        if event == "PLAYER_ENTERING_WORLD" then
+            C_Timer.After(0, function()
+                addon:ApplyBarPosition()
+            end)
         end
 
         OnEvent(self, event, ...)

@@ -2,7 +2,8 @@ local addonName, addon = ...
 
 local function PrintHelp()
     print("|cff00ff00Better Stagger|r commands:")
-    print("  /bs config  - Open settings panel (Esc -> Settings -> AddOns)")
+    print("  /bs config  - Open addon settings")
+    print("  /bs edit    - Open Edit Mode (requires LibEditMode)")
     print("  /bs lock    - Lock bar position")
     print("  /bs unlock  - Unlock bar position")
     print("  /bs reset   - Reset bar position to default")
@@ -21,6 +22,11 @@ local function HandleSlashCommand(message)
 
     if command == "config" then
         addon:OpenConfigPanel()
+        return
+    end
+
+    if command == "edit" or command == "editmode" then
+        addon:OpenEditMode()
         return
     end
 

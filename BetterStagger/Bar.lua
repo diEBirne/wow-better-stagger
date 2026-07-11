@@ -34,10 +34,6 @@ local function RefreshFrameLevels(frame)
     if frame.borderFrame then
         frame.borderFrame:SetFrameLevel(baseLevel + 5)
     end
-
-    if frame.glowFrame then
-        frame.glowFrame:SetFrameLevel(baseLevel + 6)
-    end
 end
 
 function addon:CreateBar()
@@ -49,12 +45,8 @@ function addon:CreateBar()
     local appearance = db.appearance
 
     local frame = CreateFrame("Frame", "BetterStaggerBar", UIParent)
-    frame:SetSize(appearance.width, appearance.height)
-    frame:SetPoint(appearance.point, UIParent, appearance.relativePoint, appearance.x, appearance.y)
+    frame:SetSize(self:GetEffectiveBarWidth(), appearance.height)
     frame:SetClampedToScreen(true)
-    frame:EnableMouse(not appearance.locked)
-    frame:SetMovable(true)
-    frame:RegisterForDrag("LeftButton")
 
     frame:SetScript("OnDragStart", function(barFrame)
         if not addon.db.appearance.locked then
@@ -65,6 +57,8 @@ function addon:CreateBar()
     frame:SetScript("OnDragStop", function(barFrame)
         barFrame:StopMovingOrSizing()
         SavePosition(barFrame, addon.db.appearance)
+        addon.db.appearance.attachFrame = "UIParent"
+        addon:ApplyBarPosition()
     end)
 
     local background = frame:CreateTexture(nil, "BACKGROUND")
@@ -108,19 +102,6 @@ function addon:CreateBar()
     borderFrame:EnableMouse(false)
     frame.borderFrame = borderFrame
 
-    local glowFrame = CreateFrame("Frame", nil, frame)
-    glowFrame:SetAllPoints(frame)
-    frame.glowFrame = glowFrame
-
-    local glow = glowFrame:CreateTexture(nil, "OVERLAY")
-    glow:SetPoint("TOPLEFT", frame, "TOPLEFT", -2, 2)
-    glow:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 2, -2)
-    glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
-    glow:SetBlendMode("ADD")
-    glow:SetVertexColor(1, 0.2, 0.1, 0.8)
-    glow:Hide()
-    frame.glow = glow
-
     RefreshFrameLevels(frame)
 
     self.bar = frame
@@ -137,10 +118,9 @@ function addon:ApplyAppearance()
     local appearance = self.db.appearance
     local textConfig = self.db.text
 
-    frame:SetSize(appearance.width, appearance.height)
-    frame:ClearAllPoints()
-    frame:SetPoint(appearance.point, UIParent, appearance.relativePoint, appearance.x, appearance.y)
-    frame:EnableMouse(not appearance.locked)
+    frame:SetSize(self:GetEffectiveBarWidth(), appearance.height)
+
+    self:ApplyBarPosition()
 
     local bg = appearance.backgroundColor or { 0, 0, 0, 0.5 }
     frame.background:SetColorTexture(bg[1], bg[2], bg[3], appearance.backgroundAlpha or bg[4] or 0.5)
@@ -148,20 +128,13 @@ function addon:ApplyAppearance()
     frame.statusBar:SetStatusBarTexture(appearance.barTexture or "Interface\\TargetingFrame\\UI-StatusBar")
     frame.statusBar:SetAlpha(appearance.barAlpha or 1)
 
+    if frame.statusBar.SetReverseFill then
+        frame.statusBar:SetReverseFill(appearance.reverseFill == true)
+    end
+
     local borderFrame = frame.borderFrame
     if appearance.borderEnabled then
-        local borderColor = appearance.borderColor or { 0, 0, 0, 0.8 }
-        local borderAlpha = appearance.borderAlpha
-        if borderAlpha == nil then
-            borderAlpha = borderColor[4] or 0.8
-        end
-
-        borderFrame:SetBackdrop({
-            edgeFile = appearance.borderTexture or "Interface\\Tooltips\\UI-Tooltip-Border",
-            edgeSize = appearance.borderSize or 12,
-            insets = { left = 2, right = 2, top = 2, bottom = 2 },
-        })
-        borderFrame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], borderAlpha)
+        self:ApplyBorderColor(false)
         borderFrame:Show()
     else
         borderFrame:SetBackdrop(nil)
@@ -184,6 +157,36 @@ function addon:ApplyAppearance()
     RefreshFrameLevels(frame)
 end
 
+function addon:ApplyBorderColor(glowActive)
+    local frame = self.bar
+    if not frame or not frame.borderFrame then
+        return
+    end
+
+    local appearance = self.db.appearance
+    if not appearance.borderEnabled then
+        return
+    end
+
+    local borderColor = appearance.borderColor or { 0, 0, 0, 0.8 }
+    local borderAlpha = appearance.borderAlpha
+    if borderAlpha == nil then
+        borderAlpha = borderColor[4] or 0.8
+    end
+
+    local r, g, b, a = borderColor[1], borderColor[2], borderColor[3], borderAlpha
+    if glowActive then
+        r, g, b, a = 1, 0.25, 0.05, math.min(1, borderAlpha + 0.2)
+    end
+
+    frame.borderFrame:SetBackdrop({
+        edgeFile = appearance.borderTexture or "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = appearance.borderSize or 12,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+    })
+    frame.borderFrame:SetBackdropBorderColor(r, g, b, a)
+end
+
 function addon:SetBarFill(fill)
     if self.bar and self.bar.statusBar then
         self.bar.statusBar:SetValue(fill)
@@ -196,7 +199,7 @@ function addon:UpdateBarColor(staggerPercent)
     end
 
     if self.db.colors.enabled then
-        local r, g, b, a = self:GetColorForStagger(staggerPercent, self.db.colors.thresholds)
+        local r, g, b, a = self:GetColorForStagger(staggerPercent, self:GetBreakpointRules())
         self.bar.statusBar:SetStatusBarColor(r, g, b, a)
         return
     end
@@ -240,11 +243,15 @@ function addon:UpdateBreakpoints(scaleMaximum)
     end
 
     local config = self.db.breakpoints
-    local barWidth = self.db.appearance.width
+    local barWidth = frame.markersOverlay and frame.markersOverlay:GetWidth() or self.db.appearance.width
     local barHeight = self.db.appearance.height
-    local thickness = config.thickness or 1
-    local color = config.color or { 1, 1, 1, 0.6 }
-    local inset = 2
+    local thickness = math.max(1, math.floor((config.thickness or 1) + 0.5))
+    local color = self:GetBreakpointLineColor()
+    local insetX = 1
+    local insetY = 2
+    local drawableWidth = math.max(1, barWidth - (insetX * 2))
+    local lineHeight = math.max(1, math.floor(barHeight - (insetY * 2) + 0.5))
+    local values = self:GetBreakpointLineValues()
 
     for index = 1, MAX_BREAKPOINT_LINES do
         local line = frame.breakpointLines[index]
@@ -253,24 +260,27 @@ function addon:UpdateBreakpoints(scaleMaximum)
         label:Hide()
     end
 
-    if not config.enabled or not config.values then
+    if not config.enabled or #values == 0 then
         return
     end
 
     local lineIndex = 0
-    for _, breakpoint in ipairs(config.values) do
+    for _, breakpoint in ipairs(values) do
         local position = breakpoint / scaleMaximum
-        if position > 0 and position < 1 then
+        if position > 0 and position <= 1 then
             lineIndex = lineIndex + 1
             if lineIndex > MAX_BREAKPOINT_LINES then
                 break
             end
 
             local line = frame.breakpointLines[lineIndex]
-            local xOffset = (barWidth * position) - (thickness / 2)
+            local xCenter = insetX + (drawableWidth * position)
+            local xOffset = math.floor(xCenter - (thickness / 2) + 0.5)
+            xOffset = math.max(insetX, math.min(barWidth - insetX - thickness, xOffset))
+
             line:ClearAllPoints()
             line:SetPoint("LEFT", frame.markersOverlay, "LEFT", xOffset, 0)
-            line:SetSize(thickness, math.max(1, barHeight - (inset * 2)))
+            line:SetSize(thickness, lineHeight)
             line:SetColorTexture(color[1], color[2], color[3], color[4] or 1)
             line:Show()
 
@@ -298,11 +308,8 @@ function addon:UpdateGlow(staggerPercent)
     end
 
     local glowConfig = self.db.glow
-    if glowConfig.enabled and staggerPercent >= glowConfig.threshold then
-        self.bar.glow:Show()
-    else
-        self.bar.glow:Hide()
-    end
+    local glowActive = glowConfig.enabled and staggerPercent >= glowConfig.threshold
+    self:ApplyBorderColor(glowActive)
 end
 
 function addon:SetBarLocked(locked)
@@ -320,17 +327,17 @@ function addon:ResetBarPosition()
     appearance.relativePoint = defaults.relativePoint
     appearance.x = defaults.x
     appearance.y = defaults.y
+    appearance.attachFrame = defaults.attachFrame
 
-    if self.bar then
-        self.bar:ClearAllPoints()
-        self.bar:SetPoint(appearance.point, UIParent, appearance.relativePoint, appearance.x, appearance.y)
-    end
+    self:ApplyBarPosition()
 end
 
 function addon:SetBarSize(width, height)
-    self.db.appearance.width = width
-    self.db.appearance.height = height
-    if self.bar then
-        self.bar:SetSize(width, height)
+    if width then
+        self.db.appearance.width = width
     end
+    if height then
+        self.db.appearance.height = height
+    end
+    self:ApplyEffectiveBarSize()
 end

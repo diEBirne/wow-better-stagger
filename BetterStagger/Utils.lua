@@ -176,11 +176,16 @@ function addon:ParseBreakpointString(text)
         return values
     end
 
+    local seen = {}
     for part in string.gmatch(text, "[^,]+") do
         local trimmed = part:match("^%s*(.-)%s*$")
         local number = tonumber(trimmed)
         if number and number > 0 then
-            values[#values + 1] = number
+            number = math.floor(number + 0.5)
+            if not seen[number] then
+                seen[number] = true
+                values[#values + 1] = number
+            end
         end
     end
 
@@ -189,6 +194,10 @@ function addon:ParseBreakpointString(text)
 end
 
 function addon:FormatBreakpointString(values)
+    if addon.NormalizeBreakpointList then
+        values = addon:NormalizeBreakpointList(values)
+    end
+
     if not values or #values == 0 then
         return ""
     end

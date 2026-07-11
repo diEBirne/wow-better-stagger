@@ -2,14 +2,19 @@
 ## Title: Better Stagger
 ## Notes: A scalable Stagger bar for Brewmaster Monks.
 ## Author: di3Birne
-## Version: 0.1.0
+## Version: 0.2.0
 ## Category: Class
 ## IconTexture: Interface\Icons\spell_monk_brewmaster_spec
 ## SavedVariables: BetterStaggerDB
+## OptionalDeps: LibEditMode
 
+embeds.xml
 Defaults.lua
 Utils.lua
+Position.lua
+BreakpointRules.lua
 Bar.lua
 Core.lua
+EditMode.lua
 ConfigPanel.lua
 Slash.lua
