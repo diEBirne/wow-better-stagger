@@ -100,7 +100,7 @@ local function BuildExtendedSection(parent, y)
         {
             type = "toggle",
             text = "Extended Stagger",
-            tooltip = "Replaces default Brewmaster stagger coloring and ceiling with color zones and optional divider lines on the Class Resource bar.",
+            tooltip = "Adds custom color zones and optional divider lines to the Class Resource stagger bar.",
             getValue = function()
                 local sp = Secondary()
                 return sp and sp.extendedStagger
@@ -124,7 +124,7 @@ local function BuildExtendedSection(parent, y)
         {
             type = "slider",
             text = "Scale Maximum",
-            tooltip = "Stagger percent required to fully fill the bar. Zone divider lines are spaced evenly across this scale.",
+            tooltip = "How much Stagger (as % of max health) fills the bar completely.",
             min = 100,
             max = 500,
             step = 10,
@@ -152,61 +152,12 @@ local function BuildExtendedSection(parent, y)
     )
     y = y - h
 
-    do
-        local rgn = enableRow._leftRegion
-        local _, cogShow = EllesmereUI.BuildCogPopup({
-            title = "Extended Stagger",
-            minWidth = 280,
-            captureRegion = rgn,
-            rows = {
-                {
-                    type = "button",
-                    label = "Reset Zone Colors",
-                    action = function()
-                        ES.ResetZoneColors()
-                        RefreshLive()
-                        if EllesmereUI.RefreshPage then
-                            EllesmereUI:RefreshPage()
-                        end
-                    end,
-                },
-            },
-        })
-        local cogBtn = MakeInlineCog(rgn, cogShow)
-        if cogBtn then
-            local cogDis = CreateFrame("Frame", nil, rgn)
-            cogDis:SetAllPoints(cogBtn)
-            cogDis:SetFrameLevel(cogBtn:GetFrameLevel() + 5)
-            cogDis:EnableMouse(true)
-            cogDis:SetScript("OnEnter", function()
-                EllesmereUI.ShowWidgetTooltip(cogBtn, EllesmereUI.DisabledTooltip("Extended Stagger"))
-            end)
-            cogDis:SetScript("OnLeave", function()
-                EllesmereUI.HideWidgetTooltip()
-            end)
-            local function UpdateCogDis()
-                if ExtendedOff() then
-                    cogDis:Show()
-                    cogBtn:SetAlpha(0.15)
-                else
-                    cogDis:Hide()
-                    cogBtn:SetAlpha(0.4)
-                end
-            end
-            cogBtn:HookScript("OnShow", UpdateCogDis)
-            if EllesmereUI.RegisterWidgetRefresh then
-                EllesmereUI.RegisterWidgetRefresh(UpdateCogDis)
-            end
-            UpdateCogDis()
-        end
-    end
-
     local zonesRow
     zonesRow, h = W:DualRow(parent, y,
         {
             type = "slider",
             text = "Zones",
-            tooltip = "Number of color zones across Scale Maximum. Divider lines are placed between zones (Zones - 1). Example: 4 zones at 400% -> lines at 100 / 200 / 300.",
+            tooltip = "How many color ranges the bar is split into.",
             min = 2,
             max = 5,
             step = 1,
@@ -230,7 +181,7 @@ local function BuildExtendedSection(parent, y)
         {
             type = "multiSwatch",
             text = "Zone Colors",
-            tooltip = "Fill colors from lowest Stagger (left) to highest (right). Only the first N swatches are active for the current Zones value; the rest are saved for later.",
+            tooltip = "Fill colors from lowest Stagger (left) to highest (right).",
             disabled = ExtendedOff,
             disabledTooltip = "Extended Stagger",
             swatches = (function()
@@ -280,7 +231,7 @@ local function BuildExtendedSection(parent, y)
                 {
                     type = "toggle",
                     label = "Show Divider Lines",
-                    tooltip = "Draw vertical divider lines between color zones on the bar.",
+                    tooltip = "Show lines between the color zones on the bar.",
                     get = function()
                         local s = Settings()
                         return not s or s.breakpointsEnabled ~= false
@@ -301,7 +252,7 @@ local function BuildExtendedSection(parent, y)
                     step = 1,
                     get = function()
                         local s = Settings()
-                        return s and s.lineThickness or 2
+                        return s and s.lineThickness or 1
                     end,
                     set = function(v)
                         local s = Settings()

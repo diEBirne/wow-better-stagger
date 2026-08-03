@@ -58,12 +58,14 @@ local function DefaultZoneColors()
     return colors
 end
 
+local DEFAULT_LINE_COLOR = { 0, 0, 0, 1 } -- #000000, opacity 100%
+
 local DEFAULT_SETTINGS = {
     scaleMaximum = 400,
     zoneCount = 4,
     breakpointsEnabled = true,
-    lineColor = { 0, 0, 0, 1 },
-    lineThickness = 2,
+    lineColor = { 0, 0, 0, 1 }, -- #000000, opacity 100%
+    lineThickness = 1,
 }
 
 local breakpointScratch = { nil, nil, nil, nil }
@@ -215,7 +217,17 @@ function ES.EnsureProfile(sp)
     settings.soundFile = nil
 
     if type(settings.lineColor) ~= "table" then
-        settings.lineColor = { 0, 0, 0, 1 }
+        settings.lineColor = CopyColor(DEFAULT_LINE_COLOR)
+    end
+    if settings.lineThickness == nil then
+        settings.lineThickness = 1
+    end
+    -- One-shot: apply current divider defaults (black @ 100% opacity, thickness 1)
+    -- over earlier local-build defaults (white/monk/black@0.6, thickness 2).
+    if settings._esDividerDefaults ~= 2 then
+        settings.lineColor = CopyColor(DEFAULT_LINE_COLOR)
+        settings.lineThickness = 1
+        settings._esDividerDefaults = 2
     end
     return settings
 end
@@ -332,15 +344,6 @@ function ES.GetZoneColor(zoneIndex)
     return color[1], color[2], color[3], color[4] or 1
 end
 
-function ES.ResetZoneColors()
-    local settings = ES.GetSettings()
-    if not settings then
-        return
-    end
-    settings.zoneColors = DefaultZoneColors()
-end
-
-
 local function EnsureOverlay(bar)
     if not bar then
         return nil
@@ -361,7 +364,7 @@ local function EnsureOverlay(bar)
     overlay.lines = {}
     for index = 1, MAX_DIVIDER_LINES do
         local line = overlay:CreateTexture(nil, "OVERLAY", nil, 7)
-        line:SetColorTexture(0, 0, 0, 1)
+        line:SetColorTexture(DEFAULT_LINE_COLOR[1], DEFAULT_LINE_COLOR[2], DEFAULT_LINE_COLOR[3], DEFAULT_LINE_COLOR[4])
         if line.SetSnapToPixelGrid then
             line:SetSnapToPixelGrid(false)
             line:SetTexelSnappingBias(0)
@@ -409,20 +412,25 @@ local function UpdateBreakpointLines(bar, settings, scaleMaximum)
     end
 
     local PP = EllesmereUI and EllesmereUI.PP
-    local thickness = math.max(1, math.floor((tonumber(settings.lineThickness) or 2) + 0.5))
-    local pxW = PP and (thickness * (PP.mult or 1)) or thickness
-    if pxW < 1 then
-        pxW = 1
+    local thickness = math.max(1, math.floor((tonumber(settings.lineThickness) or 1) + 0.5))
+    local mult = (PP and PP.mult) or 1
+    local pxW = thickness * mult
+    if pxW < mult then
+        pxW = mult
     end
 
     local lc = settings.lineColor
-    local lr, lg, lb, la = 0, 0, 0, 1
+    local lr = DEFAULT_LINE_COLOR[1]
+    local lg = DEFAULT_LINE_COLOR[2]
+    local lb = DEFAULT_LINE_COLOR[3]
+    local la = DEFAULT_LINE_COLOR[4]
     if type(lc) == "table" then
-        lr, lg, lb, la = lc[1] or 0, lc[2] or 0, lc[3] or 0, lc[4] or 1
+        lr, lg, lb, la = lc[1] or lr, lc[2] or lg, lc[3] or lb, lc[4] or la
     end
 
     local values, lineCount = ES.GetBreakpointValues()
     local drawn = 0
+    local es = UIParent and UIParent:GetEffectiveScale() or 1
 
     for index = 1, lineCount do
         local value = values[index]
@@ -430,8 +438,21 @@ local function UpdateBreakpointLines(bar, settings, scaleMaximum)
         if ratio > 0 and ratio <= 1 and drawn < MAX_DIVIDER_LINES then
             drawn = drawn + 1
             local line = overlay.lines[drawn]
-            local center = PP and PP.Scale(width * ratio) or (width * ratio)
-            local off = center - (pxW * 0.5)
+            -- Center on the breakpoint. SnapCenterForDim keeps both edges on
+            -- physical pixels for odd/even thicknesses (avoids 1 vs 2 looking equal).
+            local centerRaw = width * ratio
+            local off
+            if PP and PP.SnapCenterForDim then
+                local center = PP.SnapCenterForDim(centerRaw, pxW, es)
+                off = center - (pxW * 0.5)
+                if PP.Snap then
+                    off = PP.Snap(off)
+                end
+            elseif PP and PP.Snap then
+                off = PP.Snap(centerRaw - (pxW * 0.5))
+            else
+                off = math.floor(centerRaw - (pxW * 0.5) + 0.5)
+            end
             if off < 0 then
                 off = 0
             elseif off > width - pxW then
