@@ -76,6 +76,15 @@ WoW Retail addon — no automated test runner. Validate manually in-game.
 - **Slash shortcuts:** `/bs lock`, `/bs unlock`, `/bs reset`, `/bs test`, `/bs help`.
 - **Default update interval:** 0.1 s (configurable 0.05–0.5 in Performance settings).
 - **Lint / Typecheck / Build:** N/A (Lua addon, no build step).
+- **Deploy Standalone:** `.\scripts\deploy.ps1 -Target Standalone`
+- **Deploy Ellesmere Enhanced Stagger (local):** `.\scripts\deploy.ps1 -Target Ellesmere`
+
+## Standalone freeze / EUI work
+
+- Tag `v0.2.0-standalone` freezes the pre-EUI standalone product.
+- Branch `eui-integration` holds Core split + local Ellesmere Resource Bars integration (`integrations/ellesmere/`).
+- Standalone engine lives under `BetterStagger/Core/`; shell is `Core.lua` + ConfigPanel/EditMode/Slash.
+- EUI product name: **Enhanced Stagger** (opt-in under Resource Bars → Class Resource). Not a separate EUI sidebar module.
 
 ## Key Design Rule: Documentation Style and Quality
 

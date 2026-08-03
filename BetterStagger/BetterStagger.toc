@@ -9,11 +9,12 @@
 ## OptionalDeps: LibEditMode
 
 embeds.xml
-Defaults.lua
-Utils.lua
-Position.lua
-BreakpointRules.lua
-Bar.lua
+Core\Defaults.lua
+Core\Utils.lua
+Core\Position.lua
+Core\BreakpointRules.lua
+Core\Bar.lua
+Core\Engine.lua
 Core.lua
 EditMode.lua
 ConfigPanel.lua
