@@ -1,24 +1,31 @@
 -------------------------------------------------------------------------------
 -- Extended Stagger (local EllesmereUI Resource Bars integration)
 -- Opt-in Brewmaster stagger enhancements hosted on ERB_SecondaryBar.
--- Default OFF. Zero cost when disabled / not Brewmaster.
+-- Default OFF. Zero ongoing cost when disabled / not opted in.
+--
+-- Runtime model (EUI acceptance-oriented):
+-- - Visual updates ride the existing Resource Bars secondary update path.
+-- - No OnUpdate polling.
+-- - Spec events register only while the feature toggle is ON.
+-- - Overlay textures are created lazily on first needed draw.
 --
 -- Model: zoneCount (2-5) evenly divides Scale Maximum.
 -- Divider lines = zoneCount - 1. Example: 4 zones at scale 400 -> lines at 100/200/300.
 -- Five zone colors are always stored; unused higher zones apply when zoneCount rises.
 --
--- SavedVariables keys keep the enhancedStagger* names for compatibility.
+-- SavedVariables keys: extendedStagger / extendedStaggerSettings.
+-- Migrates legacy enhancedStagger* keys once.
+-- Retail and PTR: uses issecretvalue when present; no IS_121-only aura paths.
 -------------------------------------------------------------------------------
 local ADDON_NAME, ns = ...
 
 local ES = {}
-ns.EnhancedStagger = ES
+ns.ExtendedStagger = ES
 
 local MAX_DIVIDER_LINES = 4
 local MIN_ZONES = 2
 local MAX_ZONES = 5
 local BREWMASTER_SPEC_ID = 268
-local UPDATE_INTERVAL = 0.1
 local DEFAULT_ZONE_COLORS = {
     { 0.1, 0.8, 0.1, 1 },
     { 0.9, 0.9, 0.1, 1 },
@@ -57,28 +64,11 @@ local DEFAULT_SETTINGS = {
     breakpointsEnabled = true,
     lineColor = { 0, 0, 0, 1 },
     lineThickness = 2,
-    soundEnabled = false,
-    soundThreshold = 400,
-    soundCooldownSeconds = 10,
-    soundFile = "UI_RAID_BOSS_WHISPER_WARNING",
 }
 
-local SOUND_KEYS = {
-    UI_RAID_BOSS_WHISPER_WARNING = true,
-    UI_RAID_BOSS_EMOTE_WARNING = true,
-    ALARM_CLOCK_WARNING_2 = true,
-    ALARM_CLOCK_WARNING_3 = true,
-    RAID_WARNING = true,
-    READY_CHECK = true,
-    QUEUED_STATUS_READY_CHECK_IN = true,
-    UI_ORDERHALL_TALENT_READY_TOAST = true,
-}
-
-local DEFAULT_SOUND = "UI_RAID_BOSS_WHISPER_WARNING"
-
-local lastSoundTime = 0
-local elapsedSinceUpdate = 0
-local tickFrame = nil
+local breakpointScratch = { nil, nil, nil, nil }
+local eventFrame = nil
+local runtimeEventsActive = false
 
 local function ClampZoneCount(value)
     value = math.floor((tonumber(value) or 4) + 0.5)
@@ -89,11 +79,6 @@ local function ClampZoneCount(value)
         return MAX_ZONES
     end
     return value
-end
-
-local function ClampDividerCount(value)
-    -- Divider lines are derived from zones: zones 2..5 -> lines 1..4.
-    return ClampZoneCount((tonumber(value) or 4)) - 1
 end
 
 local function NormalizeZoneColors(colors)
@@ -150,7 +135,6 @@ local function MigrateLegacySettings(settings)
         lineCount = MAX_DIVIDER_LINES
     end
 
-    -- Map sorted legacy colors onto zones (including the 0% baseline rule).
     local colorIndex = 1
     for index = 1, #legacy do
         if colorIndex <= MAX_ZONES then
@@ -186,15 +170,26 @@ function ES.EnsureProfile(sp)
     if not sp then
         return nil
     end
-    if sp.enhancedStagger == nil then
-        sp.enhancedStagger = false
+
+    -- Migrate legacy enhanced* keys from earlier local builds.
+    if sp.extendedStagger == nil and sp.enhancedStagger ~= nil then
+        sp.extendedStagger = sp.enhancedStagger and true or false
     end
-    if type(sp.enhancedStaggerSettings) ~= "table" then
-        sp.enhancedStaggerSettings = ES.GetDefaults()
-        return sp.enhancedStaggerSettings
+    if type(sp.extendedStaggerSettings) ~= "table" and type(sp.enhancedStaggerSettings) == "table" then
+        sp.extendedStaggerSettings = sp.enhancedStaggerSettings
+    end
+    sp.enhancedStagger = nil
+    sp.enhancedStaggerSettings = nil
+
+    if sp.extendedStagger == nil then
+        sp.extendedStagger = false
+    end
+    if type(sp.extendedStaggerSettings) ~= "table" then
+        sp.extendedStaggerSettings = ES.GetDefaults()
+        return sp.extendedStaggerSettings
     end
 
-    local settings = sp.enhancedStaggerSettings
+    local settings = sp.extendedStaggerSettings
     MigrateLegacySettings(settings)
 
     for key, defaultValue in pairs(DEFAULT_SETTINGS) do
@@ -203,7 +198,6 @@ function ES.EnsureProfile(sp)
         end
     end
 
-    -- Migrate older breakpointCount (lines) into zoneCount.
     if settings.zoneCount == nil and settings.breakpointCount ~= nil then
         settings.zoneCount = (tonumber(settings.breakpointCount) or 3) + 1
     end
@@ -215,6 +209,10 @@ function ES.EnsureProfile(sp)
     settings.rules = nil
     settings.testMode = nil
     settings.testStaggerPercent = nil
+    settings.soundEnabled = nil
+    settings.soundThreshold = nil
+    settings.soundCooldownSeconds = nil
+    settings.soundFile = nil
 
     if type(settings.lineColor) ~= "table" then
         settings.lineColor = { 0, 0, 0, 1 }
@@ -223,6 +221,15 @@ function ES.EnsureProfile(sp)
 end
 
 function ES.GetSettings(sp)
+    sp = sp or ES.GetSecondary()
+    if not sp then
+        return nil
+    end
+    local settings = sp.extendedStaggerSettings
+    -- Hot path: settings already present and normalized by EnsureProfile / options.
+    if type(settings) == "table" and type(settings.zoneColors) == "table" and settings.zoneCount ~= nil then
+        return settings
+    end
     return ES.EnsureProfile(sp)
 end
 
@@ -245,14 +252,19 @@ function ES.GetDividerCount(sp)
 end
 
 -- Evenly spaced absolute Stagger % values for divider lines.
+-- Reuses a scratch table to avoid hot-path allocations.
 function ES.GetBreakpointValues(sp)
     local scaleMaximum = ES.GetScaleMaximum(sp)
-    local lineCount = ES.GetDividerCount(sp)
-    local values = {}
-    for index = 1, lineCount do
-        values[index] = scaleMaximum * index / (lineCount + 1)
+    local zoneCount = ES.GetZoneCount(sp)
+    local lineCount = zoneCount - 1
+    for index = 1, MAX_DIVIDER_LINES do
+        if index <= lineCount then
+            breakpointScratch[index] = scaleMaximum * index / zoneCount
+        else
+            breakpointScratch[index] = nil
+        end
     end
-    return values
+    return breakpointScratch, lineCount
 end
 
 function ES.GetZoneRangeLabel(zoneIndex, sp)
@@ -280,10 +292,10 @@ end
 
 function ES.GetColorForStagger(staggerPercent, sp)
     local settings = ES.GetSettings(sp)
-    local scaleMaximum = ES.GetScaleMaximum(sp)
-    local zoneCount = ES.GetZoneCount(sp)
+    local scaleMaximum = tonumber(settings and settings.scaleMaximum) or 400
+    local zoneCount = ClampZoneCount(settings and settings.zoneCount)
     local lineCount = zoneCount - 1
-    local colors = NormalizeZoneColors(settings and settings.zoneColors)
+    local colors = settings and settings.zoneColors
     local zone = 1
     for index = 1, lineCount do
         local threshold = scaleMaximum * index / zoneCount
@@ -291,7 +303,7 @@ function ES.GetColorForStagger(staggerPercent, sp)
             zone = index + 1
         end
     end
-    local color = colors[zone] or colors[1]
+    local color = (colors and colors[zone]) or DEFAULT_ZONE_COLORS[zone] or DEFAULT_ZONE_COLORS[1]
     return color[1], color[2], color[3], color[4] or 1
 end
 
@@ -311,9 +323,12 @@ end
 
 function ES.GetZoneColor(zoneIndex)
     local settings = ES.GetSettings()
-    local colors = NormalizeZoneColors(settings and settings.zoneColors)
+    local colors = settings and settings.zoneColors
+    if type(colors) ~= "table" then
+        colors = DEFAULT_ZONE_COLORS
+    end
     zoneIndex = math.max(1, math.min(MAX_ZONES, math.floor(tonumber(zoneIndex) or 1)))
-    local color = colors[zoneIndex]
+    local color = colors[zoneIndex] or DEFAULT_ZONE_COLORS[zoneIndex]
     return color[1], color[2], color[3], color[4] or 1
 end
 
@@ -325,24 +340,6 @@ function ES.ResetZoneColors()
     settings.zoneColors = DefaultZoneColors()
 end
 
-local function PlayAlertSound(soundKey)
-    if not soundKey or not SOUNDKIT then
-        return false
-    end
-    if not SOUND_KEYS[soundKey] or not SOUNDKIT[soundKey] then
-        soundKey = DEFAULT_SOUND
-    end
-    local kitID = SOUNDKIT[soundKey]
-    if not kitID then
-        return false
-    end
-    PlaySound(kitID, "Master")
-    return true
-end
-
-function ES.PreviewSound(soundKey)
-    return PlayAlertSound(soundKey)
-end
 
 local function EnsureOverlay(bar)
     if not bar then
@@ -391,6 +388,11 @@ local function HideOverlay(bar)
 end
 
 local function UpdateBreakpointLines(bar, settings, scaleMaximum)
+    if not settings.breakpointsEnabled then
+        HideOverlay(bar)
+        return
+    end
+
     local overlay = EnsureOverlay(bar)
     if not overlay then
         return
@@ -399,7 +401,7 @@ local function UpdateBreakpointLines(bar, settings, scaleMaximum)
 
     local width = bar:GetWidth() or 0
     local height = bar:GetHeight() or 0
-    if width <= 0 or height <= 0 or not settings.breakpointsEnabled then
+    if width <= 0 or height <= 0 then
         for index = 1, MAX_DIVIDER_LINES do
             overlay.lines[index]:Hide()
         end
@@ -413,17 +415,21 @@ local function UpdateBreakpointLines(bar, settings, scaleMaximum)
         pxW = 1
     end
 
-    local lineColor = CopyColor(settings.lineColor, { 0, 0, 0, 1 })
-    local values = ES.GetBreakpointValues()
+    local lc = settings.lineColor
+    local lr, lg, lb, la = 0, 0, 0, 1
+    if type(lc) == "table" then
+        lr, lg, lb, la = lc[1] or 0, lc[2] or 0, lc[3] or 0, lc[4] or 1
+    end
+
+    local values, lineCount = ES.GetBreakpointValues()
     local drawn = 0
 
-    for index = 1, #values do
+    for index = 1, lineCount do
         local value = values[index]
         local ratio = value / scaleMaximum
         if ratio > 0 and ratio <= 1 and drawn < MAX_DIVIDER_LINES then
             drawn = drawn + 1
             local line = overlay.lines[drawn]
-            -- Center the tick on the breakpoint so thickness grows left and right.
             local center = PP and PP.Scale(width * ratio) or (width * ratio)
             local off = center - (pxW * 0.5)
             if off < 0 then
@@ -432,7 +438,7 @@ local function UpdateBreakpointLines(bar, settings, scaleMaximum)
                 off = width - pxW
             end
             line:ClearAllPoints()
-            line:SetColorTexture(lineColor[1], lineColor[2], lineColor[3], lineColor[4] or 1)
+            line:SetColorTexture(lr, lg, lb, la)
             line:SetSize(pxW, height)
             line:SetPoint("TOPLEFT", overlay, "TOPLEFT", off, 0)
             line:Show()
@@ -444,29 +450,25 @@ local function UpdateBreakpointLines(bar, settings, scaleMaximum)
     end
 end
 
-local function UpdateSound(settings, staggerPercent)
-    if not settings.soundEnabled or staggerPercent < (settings.soundThreshold or 400) then
-        return
-    end
-    local now = GetTime()
-    local cooldown = settings.soundCooldownSeconds or 10
-    if now - lastSoundTime < cooldown then
-        return
-    end
-    if PlayAlertSound(settings.soundFile) then
-        lastSoundTime = now
-    end
-end
 
 local function GetSecondaryBar()
     return _G.ERB_SecondaryBar
 end
 
-local function ReadStagger()
-    local cur = UnitStagger("player") or 0
-    local maxHealth = UnitHealthMax("player") or 1
-    local curTainted = issecretvalue and issecretvalue(cur)
-    local maxTainted = issecretvalue and issecretvalue(maxHealth)
+local function IsSecret(value)
+    return issecretvalue and issecretvalue(value)
+end
+
+local function ReadStagger(cur, maxHealth)
+    if cur == nil then
+        cur = UnitStagger("player") or 0
+    end
+    if maxHealth == nil then
+        maxHealth = UnitHealthMax("player") or 1
+    end
+
+    local curTainted = IsSecret(cur)
+    local maxTainted = IsSecret(maxHealth)
     if maxTainted or not maxHealth or maxHealth <= 0 then
         maxHealth = 1
     end
@@ -482,7 +484,7 @@ function ES.SyncCeiling(sp)
         return
     end
     ES.EnsureProfile(sp)
-    if sp.enhancedStagger then
+    if sp.extendedStagger then
         if sp._esSavedCeiling == nil then
             sp._esSavedCeiling = sp.staggerCeilingPercent
         end
@@ -508,7 +510,7 @@ end
 
 function ES.IsEnabled(sp)
     sp = sp or ES.GetSecondary()
-    return sp and sp.enhancedStagger and true or false
+    return sp and sp.extendedStagger and true or false
 end
 
 function ES.IsActive(sp)
@@ -516,9 +518,35 @@ function ES.IsActive(sp)
     return ES.IsEnabled(sp) and ES.IsBrewmaster()
 end
 
-function ES.ApplyVisual(force)
-    local sp = ES.GetSecondary()
-    local bar = GetSecondaryBar()
+local function SetRuntimeEventsActive(active)
+    if active then
+        if not eventFrame then
+            eventFrame = CreateFrame("Frame")
+            eventFrame:SetScript("OnEvent", function(_, event, unit)
+                if event == "PLAYER_SPECIALIZATION_CHANGED" and unit and unit ~= "player" then
+                    return
+                end
+                ES.SyncCeiling()
+                if ES.IsActive() then
+                    ES.ApplyVisual(true)
+                else
+                    HideOverlay(GetSecondaryBar())
+                end
+            end)
+        end
+        if not runtimeEventsActive then
+            eventFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+            runtimeEventsActive = true
+        end
+    elseif eventFrame and runtimeEventsActive then
+        eventFrame:UnregisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+        runtimeEventsActive = false
+    end
+end
+
+function ES.ApplyVisual(force, bar, sp, cur, maxHealth)
+    sp = sp or ES.GetSecondary()
+    bar = bar or GetSecondaryBar()
     if not bar then
         return
     end
@@ -529,17 +557,22 @@ function ES.ApplyVisual(force)
     end
 
     local settings = ES.GetSettings(sp)
-    local scaleMaximum = ES.GetScaleMaximum(sp)
-    local cur, maxHealth, staggerPercent = ReadStagger()
+    local scaleMaximum = tonumber(settings.scaleMaximum) or 400
+    if scaleMaximum < 1 then
+        scaleMaximum = 1
+    end
 
-    if maxHealth and not (issecretvalue and issecretvalue(maxHealth)) and maxHealth > 0 then
+    local staggerPercent
+    cur, maxHealth, staggerPercent = ReadStagger(cur, maxHealth)
+
+    if maxHealth and not IsSecret(maxHealth) and maxHealth > 0 then
         local barMax = maxHealth * scaleMaximum / 100
         if force or bar._esLastMax ~= barMax then
             bar._esLastMax = barMax
             bar._lastMaxC = barMax
             bar:SetMinMaxValues(0, barMax)
         end
-        if cur ~= nil and not (issecretvalue and issecretvalue(cur)) then
+        if cur ~= nil and not IsSecret(cur) then
             bar:SetValue(cur)
         end
     end
@@ -561,49 +594,36 @@ function ES.ApplyVisual(force)
                 end
             end
         end
-        UpdateSound(settings, staggerPercent)
     end
 
     UpdateBreakpointLines(bar, settings, scaleMaximum)
 end
 
-function ES.OnSecondaryUpdate()
-    ES.ApplyVisual(true)
-end
-
-local function SetTickerActive(active)
-    if active then
-        if not tickFrame then
-            tickFrame = CreateFrame("Frame")
-            tickFrame:SetScript("OnUpdate", function(_, elapsed)
-                if not ES.IsActive() then
-                    elapsedSinceUpdate = 0
-                    HideOverlay(GetSecondaryBar())
-                    tickFrame:Hide()
-                    return
-                end
-                elapsedSinceUpdate = elapsedSinceUpdate + elapsed
-                if elapsedSinceUpdate >= UPDATE_INTERVAL then
-                    elapsedSinceUpdate = 0
-                    ES.ApplyVisual(false)
-                end
-            end)
-        end
-        tickFrame:Show()
-    elseif tickFrame then
-        tickFrame:Hide()
-        elapsedSinceUpdate = 0
+-- Called from the Resource Bars secondary update hook (gated on sp.extendedStagger).
+function ES.OnSecondaryUpdate(secondaryBar, sp, cur, maxC)
+    if not sp or not sp.extendedStagger then
+        return
     end
+    if not ES.IsBrewmaster() then
+        HideOverlay(secondaryBar or GetSecondaryBar())
+        return
+    end
+    ES.ApplyVisual(false, secondaryBar, sp, cur, maxC)
 end
 
 function ES.Refresh(rebuildOptions, fullApply)
+    local enabled = ES.IsEnabled()
     ES.SyncCeiling()
-    SetTickerActive(ES.IsActive())
+    SetRuntimeEventsActive(enabled)
+
+    if not enabled then
+        HideOverlay(GetSecondaryBar())
+    end
 
     if fullApply and _G._ERB_Apply then
         _G._ERB_Apply()
         C_Timer.After(0, function()
-            SetTickerActive(ES.IsActive())
+            SetRuntimeEventsActive(ES.IsEnabled())
             ES.ApplyVisual(true)
         end)
     else
@@ -620,32 +640,27 @@ function ES.SetEnabled(enabled)
     if not sp then
         return
     end
-    sp.enhancedStagger = not not enabled
+    sp.extendedStagger = not not enabled
     ES.Refresh(true, true)
 end
 
+-- One-shot login bootstrap. Unregisters immediately; ongoing events only if enabled.
 local boot = CreateFrame("Frame")
 boot:RegisterEvent("PLAYER_LOGIN")
-boot:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
-boot:SetScript("OnEvent", function(self, event, unit)
-    if event == "PLAYER_SPECIALIZATION_CHANGED" and unit and unit ~= "player" then
-        return
-    end
-    if event == "PLAYER_LOGIN" then
-        self:UnregisterEvent("PLAYER_LOGIN")
-        C_Timer.After(0, function()
-            local sp = ES.GetSecondary()
-            if sp then
-                ES.EnsureProfile(sp)
-                if sp.enhancedStagger then
-                    ES.SyncCeiling(sp)
-                end
-            end
-            SetTickerActive(ES.IsActive())
-            ES.ApplyVisual(true)
-        end)
-        return
-    end
-    SetTickerActive(ES.IsActive())
-    ES.ApplyVisual(true)
+boot:SetScript("OnEvent", function(self)
+    self:UnregisterAllEvents()
+    self:SetScript("OnEvent", nil)
+    C_Timer.After(0, function()
+        local sp = ES.GetSecondary()
+        if not sp then
+            return
+        end
+        ES.EnsureProfile(sp)
+        if not sp.extendedStagger then
+            return
+        end
+        ES.SyncCeiling(sp)
+        SetRuntimeEventsActive(true)
+        ES.ApplyVisual(true)
+    end)
 end)

@@ -84,7 +84,8 @@ WoW Retail addon — no automated test runner. Validate manually in-game.
 - Tag `v0.2.0-standalone` freezes the pre-EUI standalone product.
 - Branch `eui-integration` holds Core split + local Ellesmere Resource Bars integration (`integrations/ellesmere/`).
 - Standalone engine lives under `BetterStagger/Core/`; shell is `Core.lua` + ConfigPanel/EditMode/Slash.
-- EUI product name: **Extended Stagger** (opt-in under Resource Bars → Class Resource). Not a separate EUI sidebar module. SavedVariables keys remain `enhancedStagger` / `enhancedStaggerSettings` for compatibility.
+- EUI product name: **Extended Stagger** (opt-in under Resource Bars → Class Resource). Not a separate EUI sidebar module. SavedVariables: `extendedStagger` / `extendedStaggerSettings` (migrates legacy `enhancedStagger*`).
+- Extended Stagger runtime (acceptance-oriented): default OFF; updates ride the Resource Bars secondary update hook gated on `sp.extendedStagger`; no OnUpdate ticker; `PLAYER_SPECIALIZATION_CHANGED` only while the toggle is ON; overlay created lazily. Options UI hooks still install at login (page-build only). No sound warning (kept out for cost/simplicity).
 
 ## Key Design Rule: Documentation Style and Quality
 

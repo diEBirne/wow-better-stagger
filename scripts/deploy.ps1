@@ -1,4 +1,4 @@
-# Deploy Better Stagger and/or local Ellesmere Enhanced Stagger integration.
+# Deploy Better Stagger and/or local Ellesmere Extended Stagger integration.
 #
 # Usage:
 #   .\scripts\deploy.ps1
@@ -24,15 +24,17 @@ $StandaloneDestination = Join-Path $WoWAddOnsPath "BetterStagger"
 $EllesmereIntegration = Join-Path $RepoRoot "integrations\ellesmere"
 $ResourceBarsDestination = Join-Path $WoWAddOnsPath "EllesmereUIResourceBars"
 
-$HookBegin = "-- BEGIN EnhancedStagger hook"
-$HookEnd = "-- END EnhancedStagger hook"
+$HookBegin = "-- BEGIN ExtendedStagger hook"
+$HookEnd = "-- END ExtendedStagger hook"
 $HookBlock = @"
             $HookBegin
-            if powerType == "BREWMASTER_STAGGER" and ns.EnhancedStagger then
-                ns.EnhancedStagger.OnSecondaryUpdate(secondaryBar, sp, cur, maxC)
+            if powerType == "BREWMASTER_STAGGER" and sp.extendedStagger and ns.ExtendedStagger then
+                ns.ExtendedStagger.OnSecondaryUpdate(secondaryBar, sp, cur, maxC)
             end
             $HookEnd
 "@
+$LegacyHookBegin = "-- BEGIN EnhancedStagger hook"
+$LegacyHookEnd = "-- END EnhancedStagger hook"
 
 function Write-Step {
     param([string]$Message)
@@ -96,7 +98,7 @@ function Ensure-TocEntries {
 
     $lines = @(Get-Content -LiteralPath $TocPath)
     $filtered = foreach ($line in $lines) {
-        if ($line -match '^EnhancedStagger(?:_Options)?\.lua\s*$') {
+        if ($line -match '^(?:Enhanced|Extended)Stagger(?:_Options)?\.lua\s*$') {
             continue
         }
         $line
@@ -107,21 +109,21 @@ function Ensure-TocEntries {
     foreach ($line in $filtered) {
         $out.Add($line)
         if (-not $inserted -and $line -match '^EUI_ResourceBars_Options\.lua\s*$') {
-            $out.Add("EnhancedStagger.lua")
-            $out.Add("EnhancedStagger_Options.lua")
+            $out.Add("ExtendedStagger.lua")
+            $out.Add("ExtendedStagger_Options.lua")
             $inserted = $true
         }
     }
 
     if (-not $inserted) {
-        throw "Could not find EUI_ResourceBars_Options.lua entry in TOC to insert Enhanced Stagger files."
+        throw "Could not find EUI_ResourceBars_Options.lua entry in TOC to insert Extended Stagger files."
     }
 
     $newContent = ($out -join "`r`n") + "`r`n"
     $oldContent = (Get-Content -LiteralPath $TocPath -Raw)
     if ($newContent -ne $oldContent) {
         Set-Content -LiteralPath $TocPath -Value $newContent -NoNewline
-        Write-Step "Updated TOC load order for Enhanced Stagger"
+        Write-Step "Updated TOC load order for Extended Stagger"
     }
 }
 
@@ -130,11 +132,16 @@ function Ensure-RuntimeHook {
 
     $content = Get-Content -LiteralPath $MainLuaPath -Raw
 
-    # Always strip previous marker block so re-deploy can relocate the hook.
-    if ($content -match [regex]::Escape($HookBegin)) {
-        $pattern = "(?s)[ \t]*" + [regex]::Escape($HookBegin) + ".*?" + [regex]::Escape($HookEnd) + "\r?\n?"
-        $content = [regex]::Replace($content, $pattern, "")
-        Write-Step "Removed previous Extended Stagger runtime hook"
+    # Always strip previous marker blocks (current + legacy name) so re-deploy can relocate.
+    foreach ($pair in @(
+        @{ Begin = $HookBegin; End = $HookEnd },
+        @{ Begin = $LegacyHookBegin; End = $LegacyHookEnd }
+    )) {
+        if ($content -match [regex]::Escape($pair.Begin)) {
+            $pattern = "(?s)[ \t]*" + [regex]::Escape($pair.Begin) + ".*?" + [regex]::Escape($pair.End) + "\r?\n?"
+            $content = [regex]::Replace($content, $pattern, "")
+            Write-Step "Removed previous Extended Stagger runtime hook ($($pair.Begin))"
+        }
     }
 
     $ceilingIdx = $content.IndexOf("Brewmaster stagger ceiling")
@@ -225,8 +232,8 @@ function Deploy-Ellesmere {
     }
 
     $files = @(
-        "EnhancedStagger.lua",
-        "EnhancedStagger_Options.lua"
+        "ExtendedStagger.lua",
+        "ExtendedStagger_Options.lua"
     )
 
     Write-Step "Ellesmere integration: $EllesmereIntegration"
@@ -237,7 +244,7 @@ function Deploy-Ellesmere {
             Write-Host "  copy $fileName"
         }
         Write-Host "  patch EllesmereUIResourceBars.toc"
-        Write-Host "  patch EllesmereUIResourceBars.lua (Enhanced Stagger hook)"
+        Write-Host "  patch EllesmereUIResourceBars.lua (Extended Stagger hook)"
         return
     }
 
@@ -249,6 +256,15 @@ function Deploy-Ellesmere {
         }
         Copy-Item -LiteralPath $src -Destination $dst -Force
         Write-Step "Copied $fileName"
+    }
+
+    # Remove legacy Enhanced* filenames from older local deploys.
+    foreach ($legacyName in @("EnhancedStagger.lua", "EnhancedStagger_Options.lua")) {
+        $legacyPath = Join-Path $ResourceBarsDestination $legacyName
+        if (Test-Path -LiteralPath $legacyPath) {
+            Remove-Item -LiteralPath $legacyPath -Force
+            Write-Step "Removed legacy $legacyName"
+        }
     }
 
     $tocPath = Join-Path $ResourceBarsDestination "EllesmereUIResourceBars.toc"

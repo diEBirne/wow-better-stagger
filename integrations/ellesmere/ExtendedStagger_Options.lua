@@ -21,7 +21,7 @@ local function IsBrewmasterContext(ctx)
 end
 
 local function Secondary()
-    local ES = ns.EnhancedStagger
+    local ES = ns.ExtendedStagger
     if ES and ES.GetSecondary then
         return ES.GetSecondary()
     end
@@ -30,27 +30,27 @@ local function Secondary()
 end
 
 local function Settings()
-    local ES = ns.EnhancedStagger
+    local ES = ns.ExtendedStagger
     if ES and ES.EnsureProfile then
         return ES.EnsureProfile()
     end
     return nil
 end
 
-local function EnhancedOff()
+local function ExtendedOff()
     local sp = Secondary()
-    return not (sp and sp.enhancedStagger)
+    return not (sp and sp.extendedStagger)
 end
 
 local function RefreshLive()
-    local ES = ns.EnhancedStagger
+    local ES = ns.ExtendedStagger
     if ES and ES.ApplyVisual then
         ES.ApplyVisual(true)
     end
 end
 
 local function RefreshPage()
-    local ES = ns.EnhancedStagger
+    local ES = ns.ExtendedStagger
     if ES and ES.Refresh then
         ES.Refresh(true, true)
     elseif EllesmereUI and EllesmereUI.RefreshPage then
@@ -83,12 +83,13 @@ local function MakeInlineCog(rgn, showFn)
     return cogBtn
 end
 
-local function BuildEnhancedSection(parent, y)
+local function BuildExtendedSection(parent, y)
     local W = EllesmereUI.Widgets
-    local ES = ns.EnhancedStagger
+    local ES = ns.ExtendedStagger
     if not W or not ES then
         return y
     end
+    ES.EnsureProfile()
 
     local _, h
     _, h = W:SectionHeader(parent, "Extended Stagger", y)
@@ -102,19 +103,19 @@ local function BuildEnhancedSection(parent, y)
             tooltip = "Replaces default Brewmaster stagger coloring and ceiling with color zones and optional divider lines on the Class Resource bar.",
             getValue = function()
                 local sp = Secondary()
-                return sp and sp.enhancedStagger
+                return sp and sp.extendedStagger
             end,
             setValue = EllesmereUI.DependentSetValue(
                 function()
                     local sp = Secondary()
-                    return sp and sp.enhancedStagger
+                    return sp and sp.extendedStagger
                 end,
                 function(v)
                     local sp = Secondary()
                     if not sp then
                         return
                     end
-                    sp.enhancedStagger = v and true or false
+                    sp.extendedStagger = v and true or false
                     ES.SyncCeiling(sp)
                     RefreshPage()
                 end
@@ -127,7 +128,7 @@ local function BuildEnhancedSection(parent, y)
             min = 100,
             max = 500,
             step = 10,
-            disabled = EnhancedOff,
+            disabled = ExtendedOff,
             disabledTooltip = "Extended Stagger",
             getValue = function()
                 local s = Settings()
@@ -159,77 +160,6 @@ local function BuildEnhancedSection(parent, y)
             captureRegion = rgn,
             rows = {
                 {
-                    type = "toggle",
-                    label = "Sound Warning",
-                    get = function()
-                        local s = Settings()
-                        return s and s.soundEnabled
-                    end,
-                    set = function(v)
-                        local s = Settings()
-                        if s then
-                            s.soundEnabled = v and true or false
-                            RefreshLive()
-                        end
-                    end,
-                },
-                {
-                    type = "slider",
-                    label = "Sound At %",
-                    min = 50,
-                    max = 500,
-                    step = 10,
-                    get = function()
-                        local s = Settings()
-                        return s and s.soundThreshold or 400
-                    end,
-                    set = function(v)
-                        local s = Settings()
-                        if s then
-                            s.soundThreshold = v
-                            RefreshLive()
-                        end
-                    end,
-                },
-                {
-                    type = "dropdown",
-                    label = "Sound",
-                    values = {
-                        UI_RAID_BOSS_WHISPER_WARNING = "Boss Whisper",
-                        UI_RAID_BOSS_EMOTE_WARNING = "Boss Emote",
-                        ALARM_CLOCK_WARNING_2 = "Alarm Clock 2",
-                        ALARM_CLOCK_WARNING_3 = "Alarm Clock 3",
-                        RAID_WARNING = "Raid Warning",
-                        READY_CHECK = "Ready Check",
-                        QUEUED_STATUS_READY_CHECK_IN = "Queue Ready",
-                        UI_ORDERHALL_TALENT_READY_TOAST = "Talent Ready",
-                    },
-                    order = {
-                        "UI_RAID_BOSS_WHISPER_WARNING",
-                        "UI_RAID_BOSS_EMOTE_WARNING",
-                        "ALARM_CLOCK_WARNING_2",
-                        "ALARM_CLOCK_WARNING_3",
-                        "RAID_WARNING",
-                        "READY_CHECK",
-                        "QUEUED_STATUS_READY_CHECK_IN",
-                        "UI_ORDERHALL_TALENT_READY_TOAST",
-                    },
-                    get = function()
-                        local s = Settings()
-                        return (s and s.soundFile) or "UI_RAID_BOSS_WHISPER_WARNING"
-                    end,
-                    set = function(v)
-                        local s = Settings()
-                        if s then
-                            s.soundFile = v
-                            if ES.PreviewSound then
-                                ES.PreviewSound(v)
-                            end
-                            RefreshLive()
-                        end
-                    end,
-                },
-                {
                     type = "button",
                     label = "Reset Zone Colors",
                     action = function()
@@ -255,7 +185,7 @@ local function BuildEnhancedSection(parent, y)
                 EllesmereUI.HideWidgetTooltip()
             end)
             local function UpdateCogDis()
-                if EnhancedOff() then
+                if ExtendedOff() then
                     cogDis:Show()
                     cogBtn:SetAlpha(0.15)
                 else
@@ -280,7 +210,7 @@ local function BuildEnhancedSection(parent, y)
             min = 2,
             max = 5,
             step = 1,
-            disabled = EnhancedOff,
+            disabled = ExtendedOff,
             disabledTooltip = "Extended Stagger",
             getValue = function()
                 return ES.GetZoneCount()
@@ -301,7 +231,7 @@ local function BuildEnhancedSection(parent, y)
             type = "multiSwatch",
             text = "Zone Colors",
             tooltip = "Fill colors from lowest Stagger (left) to highest (right). Only the first N swatches are active for the current Zones value; the rest are saved for later.",
-            disabled = EnhancedOff,
+            disabled = ExtendedOff,
             disabledTooltip = "Extended Stagger",
             swatches = (function()
                 local swatches = {}
@@ -325,7 +255,7 @@ local function BuildEnhancedSection(parent, y)
                             RefreshLive()
                         end,
                         refreshAlpha = function()
-                            if EnhancedOff() then
+                            if ExtendedOff() then
                                 return 0.3
                             end
                             local activeZones = ES.GetZoneCount()
@@ -418,7 +348,7 @@ local function BuildEnhancedSection(parent, y)
                 EllesmereUI.HideWidgetTooltip()
             end)
             local function UpdateCogDis()
-                if EnhancedOff() then
+                if ExtendedOff() then
                     cogDis:Show()
                     cogBtn:SetAlpha(0.15)
                 else
@@ -438,7 +368,7 @@ local function BuildEnhancedSection(parent, y)
 end
 
 local function InstallOptionsHook()
-    if ns._EnhancedStaggerOptionsHooked then
+    if ns._ExtendedStaggerOptionsHooked then
         return
     end
     if type(ns.ERB_BuildClassResourceSection) ~= "function" then
@@ -447,7 +377,7 @@ local function InstallOptionsHook()
     if not (EllesmereUI and type(EllesmereUI.BuildCursorAnchorRow) == "function") then
         return
     end
-    ns._EnhancedStaggerOptionsHooked = true
+    ns._ExtendedStaggerOptionsHooked = true
 
     -- Stock EUI appends "Anchor to Cursor" AFTER ERB_BuildClassResourceSection.
     -- Injecting Extended Stagger inside that builder puts Cursor under our header.
@@ -468,7 +398,7 @@ local function InstallOptionsHook()
         if not IsBrewmasterContext(pending.ctx) then
             return y
         end
-        return BuildEnhancedSection(parent, y)
+        return BuildExtendedSection(parent, y)
     end
 
     local originalClass = ns.ERB_BuildClassResourceSection
