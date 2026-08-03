@@ -195,22 +195,28 @@ local function BuildEnhancedSection(parent, y)
                     type = "dropdown",
                     label = "Sound",
                     values = {
+                        UI_RAID_BOSS_WHISPER_WARNING = "Boss Whisper",
+                        UI_RAID_BOSS_EMOTE_WARNING = "Boss Emote",
+                        ALARM_CLOCK_WARNING_2 = "Alarm Clock 2",
+                        ALARM_CLOCK_WARNING_3 = "Alarm Clock 3",
                         RAID_WARNING = "Raid Warning",
-                        ALARM_CLOCK_WARNING_3 = "Alarm Clock",
                         READY_CHECK = "Ready Check",
-                        MAP_PING = "Map Ping",
-                        IG_PLAYER_INVITE = "Invite",
+                        QUEUED_STATUS_READY_CHECK_IN = "Queue Ready",
+                        UI_ORDERHALL_TALENT_READY_TOAST = "Talent Ready",
                     },
                     order = {
-                        "RAID_WARNING",
+                        "UI_RAID_BOSS_WHISPER_WARNING",
+                        "UI_RAID_BOSS_EMOTE_WARNING",
+                        "ALARM_CLOCK_WARNING_2",
                         "ALARM_CLOCK_WARNING_3",
+                        "RAID_WARNING",
                         "READY_CHECK",
-                        "MAP_PING",
-                        "IG_PLAYER_INVITE",
+                        "QUEUED_STATUS_READY_CHECK_IN",
+                        "UI_ORDERHALL_TALENT_READY_TOAST",
                     },
                     get = function()
                         local s = Settings()
-                        return (s and s.soundFile) or "RAID_WARNING"
+                        return (s and s.soundFile) or "UI_RAID_BOSS_WHISPER_WARNING"
                     end,
                     set = function(v)
                         local s = Settings()
@@ -385,7 +391,7 @@ local function BuildEnhancedSection(parent, y)
                             getValue = function()
                                 local s = Settings()
                                 local c = s and s.lineColor or { 0, 0, 0, 1 }
-                                return c[1], c[2], c[3], c[4] or 0.6
+                                return c[1], c[2], c[3], c[4] or 1
                             end,
                             setValue = function(r, g, b, a)
                                 local s = Settings()
@@ -438,15 +444,74 @@ local function InstallOptionsHook()
     if type(ns.ERB_BuildClassResourceSection) ~= "function" then
         return
     end
+    if not (EllesmereUI and type(EllesmereUI.BuildCursorAnchorRow) == "function") then
+        return
+    end
     ns._EnhancedStaggerOptionsHooked = true
 
-    local original = ns.ERB_BuildClassResourceSection
-    ns.ERB_BuildClassResourceSection = function(parent, y, ctx)
-        local newY, hdr, classEnableRow, classColorRow = original(parent, y, ctx)
-        if IsBrewmasterContext(ctx) then
-            newY = BuildEnhancedSection(parent, newY)
+    -- Stock EUI appends "Anchor to Cursor" AFTER ERB_BuildClassResourceSection.
+    -- Injecting Extended Stagger inside that builder puts Cursor under our header.
+    -- Defer until after the Class Resource cursor row (or until Power if skipped).
+
+    local pendingClassSection = nil
+
+    local function ClearPending()
+        pendingClassSection = nil
+    end
+
+    local function AppendExtendedIfPending(parent, y)
+        local pending = pendingClassSection
+        if not pending or pending.parent ~= parent then
+            return y
         end
+        ClearPending()
+        if not IsBrewmasterContext(pending.ctx) then
+            return y
+        end
+        return BuildEnhancedSection(parent, y)
+    end
+
+    local originalClass = ns.ERB_BuildClassResourceSection
+    ns.ERB_BuildClassResourceSection = function(parent, y, ctx)
+        local newY, hdr, classEnableRow, classColorRow = originalClass(parent, y, ctx)
+        pendingClassSection = {
+            parent = parent,
+            ctx = ctx,
+        }
         return newY, hdr, classEnableRow, classColorRow
+    end
+
+    local originalCursor = EllesmereUI.BuildCursorAnchorRow
+    EllesmereUI.BuildCursorAnchorRow = function(opts)
+        local row, h = originalCursor(opts)
+        local pending = pendingClassSection
+        if not pending or not opts or opts.parent ~= pending.parent then
+            return row, h
+        end
+        if type(opts.getData) ~= "function" then
+            return row, h
+        end
+        local data = opts.getData()
+        local secondary = Secondary()
+        if not secondary or data ~= secondary then
+            return row, h
+        end
+
+        local yAfterCursor = (opts.y or 0) - h
+        local finalY = AppendExtendedIfPending(opts.parent, yAfterCursor)
+        local extraH = yAfterCursor - finalY
+        if extraH < 0 then
+            extraH = 0
+        end
+        return row, h + extraH
+    end
+
+    if type(ns.ERB_BuildPowerSection) == "function" then
+        local originalPower = ns.ERB_BuildPowerSection
+        ns.ERB_BuildPowerSection = function(parent, y, ctx)
+            y = AppendExtendedIfPending(parent, y)
+            return originalPower(parent, y, ctx)
+        end
     end
 end
 

@@ -60,16 +60,21 @@ local DEFAULT_SETTINGS = {
     soundEnabled = false,
     soundThreshold = 400,
     soundCooldownSeconds = 10,
-    soundFile = "RAID_WARNING",
+    soundFile = "UI_RAID_BOSS_WHISPER_WARNING",
 }
 
 local SOUND_KEYS = {
-    RAID_WARNING = true,
+    UI_RAID_BOSS_WHISPER_WARNING = true,
+    UI_RAID_BOSS_EMOTE_WARNING = true,
+    ALARM_CLOCK_WARNING_2 = true,
     ALARM_CLOCK_WARNING_3 = true,
+    RAID_WARNING = true,
     READY_CHECK = true,
-    MAP_PING = true,
-    IG_PLAYER_INVITE = true,
+    QUEUED_STATUS_READY_CHECK_IN = true,
+    UI_ORDERHALL_TALENT_READY_TOAST = true,
 }
+
+local DEFAULT_SOUND = "UI_RAID_BOSS_WHISPER_WARNING"
 
 local lastSoundTime = 0
 local elapsedSinceUpdate = 0
@@ -262,7 +267,7 @@ function ES.GetZoneRangeLabel(zoneIndex, sp)
 
     if zoneIndex == 1 then
         local hi = RoundPct(scaleMaximum / zoneCount)
-        return string.format("0%% – %d%%", hi)
+        return string.format("0%% - %d%%", hi)
     end
     if zoneIndex >= zoneCount then
         local lo = RoundPct(scaleMaximum * lineCount / zoneCount)
@@ -270,7 +275,7 @@ function ES.GetZoneRangeLabel(zoneIndex, sp)
     end
     local lo = RoundPct(scaleMaximum * (zoneIndex - 1) / zoneCount)
     local hi = RoundPct(scaleMaximum * zoneIndex / zoneCount)
-    return string.format("%d%% – %d%%", lo, hi)
+    return string.format("%d%% - %d%%", lo, hi)
 end
 
 function ES.GetColorForStagger(staggerPercent, sp)
@@ -324,8 +329,8 @@ local function PlayAlertSound(soundKey)
     if not soundKey or not SOUNDKIT then
         return false
     end
-    if not SOUND_KEYS[soundKey] then
-        soundKey = "RAID_WARNING"
+    if not SOUND_KEYS[soundKey] or not SOUNDKIT[soundKey] then
+        soundKey = DEFAULT_SOUND
     end
     local kitID = SOUNDKIT[soundKey]
     if not kitID then
