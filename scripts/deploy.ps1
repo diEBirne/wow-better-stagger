@@ -134,53 +134,86 @@ function Ensure-RuntimeHook {
     if ($content -match [regex]::Escape($HookBegin)) {
         $pattern = "(?s)[ \t]*" + [regex]::Escape($HookBegin) + ".*?" + [regex]::Escape($HookEnd) + "\r?\n?"
         $content = [regex]::Replace($content, $pattern, "")
-        Write-Step "Removed previous Enhanced Stagger runtime hook"
+        Write-Step "Removed previous Extended Stagger runtime hook"
     }
 
-    # Insert AFTER the tainted/ease SetValue if/else that follows the stagger ceiling logic.
     $ceilingIdx = $content.IndexOf("Brewmaster stagger ceiling")
     if ($ceilingIdx -lt 0) {
-        throw "Could not locate Brewmaster stagger ceiling block for Enhanced Stagger hook."
+        throw "Could not locate Brewmaster stagger ceiling block for Extended Stagger hook."
     }
 
+    # Prefer AFTER the secondary-bar "-- Count text" block that follows the
+    # Brewmaster ceiling / SetValue path (not earlier unrelated Count text comments).
     $afterCeiling = $content.Substring($ceilingIdx)
-    $easeIdx = $afterCeiling.IndexOf("secondaryBar:SetValue(cur, ns.EASE)")
-    if ($easeIdx -lt 0) {
-        throw "Could not locate secondaryBar:SetValue(cur, ns.EASE) after stagger ceiling."
-    }
-
-    $absoluteEase = $ceilingIdx + $easeIdx
-    $endIdx = $content.IndexOf("`n", $absoluteEase)
-    if ($endIdx -lt 0) {
-        throw "Could not find end of SetValue(ease) line."
-    }
-
-    # Next non-empty line should be the closing `end` of the tainted if/else.
-    $searchFrom = $endIdx + 1
+    $countRel = $afterCeiling.IndexOf("-- Count text")
     $closingEnd = -1
-    while ($searchFrom -lt $content.Length) {
-        $nextLineEnd = $content.IndexOf("`n", $searchFrom)
-        if ($nextLineEnd -lt 0) {
-            $nextLineEnd = $content.Length
+    $insertReason = $null
+
+    if ($countRel -ge 0) {
+        $searchFrom = $ceilingIdx + $countRel
+        $depth = 0
+        $seenIf = $false
+        while ($searchFrom -lt $content.Length) {
+            $nextLineEnd = $content.IndexOf("`n", $searchFrom)
+            if ($nextLineEnd -lt 0) {
+                $nextLineEnd = $content.Length
+            }
+            $line = $content.Substring($searchFrom, $nextLineEnd - $searchFrom).Trim()
+            # Only count block-structured if/end (ignore inline if ... end).
+            if ($line -match '^if\b' -and $line -notmatch '\bend\s*$') {
+                $depth++
+                $seenIf = $true
+            } elseif ($line -eq 'end' -and $seenIf) {
+                $depth--
+                if ($depth -eq 0) {
+                    $closingEnd = $nextLineEnd
+                    $insertReason = "after secondary Count text block"
+                    break
+                }
+            }
+            $searchFrom = $nextLineEnd + 1
         }
-        $line = $content.Substring($searchFrom, $nextLineEnd - $searchFrom).Trim()
-        if ($line -eq "end") {
-            $closingEnd = $nextLineEnd
-            break
+    }
+
+    # Fallback: AFTER the tainted/ease SetValue if/else (older insertion point).
+    if ($closingEnd -lt 0) {
+        $easeIdx = $afterCeiling.IndexOf("secondaryBar:SetValue(cur, ns.EASE)")
+        if ($easeIdx -lt 0) {
+            throw "Could not locate secondaryBar:SetValue(cur, ns.EASE) after stagger ceiling."
         }
-        if ($line -ne "" -and $line -notmatch "^--") {
-            break
+
+        $absoluteEase = $ceilingIdx + $easeIdx
+        $endIdx = $content.IndexOf("`n", $absoluteEase)
+        if ($endIdx -lt 0) {
+            throw "Could not find end of SetValue(ease) line."
         }
-        $searchFrom = $nextLineEnd + 1
+
+        $searchFrom = $endIdx + 1
+        while ($searchFrom -lt $content.Length) {
+            $nextLineEnd = $content.IndexOf("`n", $searchFrom)
+            if ($nextLineEnd -lt 0) {
+                $nextLineEnd = $content.Length
+            }
+            $line = $content.Substring($searchFrom, $nextLineEnd - $searchFrom).Trim()
+            if ($line -eq "end") {
+                $closingEnd = $nextLineEnd
+                $insertReason = "after SetValue branch (fallback)"
+                break
+            }
+            if ($line -ne "" -and $line -notmatch "^--") {
+                break
+            }
+            $searchFrom = $nextLineEnd + 1
+        }
     }
 
     if ($closingEnd -lt 0) {
-        throw "Could not locate closing end after SetValue(ease) for Enhanced Stagger hook."
+        throw "Could not locate insertion point for Extended Stagger hook."
     }
 
     $insertion = $content.Substring(0, $closingEnd + 1) + $HookBlock + "`r`n" + $content.Substring($closingEnd + 1)
     Set-Content -LiteralPath $MainLuaPath -Value $insertion -NoNewline
-    Write-Step "Inserted Enhanced Stagger runtime hook after SetValue branch"
+    Write-Step "Inserted Extended Stagger runtime hook $insertReason"
 }
 
 function Deploy-Ellesmere {
@@ -223,8 +256,8 @@ function Deploy-Ellesmere {
     Ensure-TocEntries -TocPath $tocPath
     Ensure-RuntimeHook -MainLuaPath $mainLua
 
-    Write-Host "Ellesmere Enhanced Stagger deploy complete." -ForegroundColor Green
-    Write-Host "  Tip: disable the standalone BetterStagger addon while testing Enhanced Stagger." -ForegroundColor Yellow
+    Write-Host "Ellesmere Extended Stagger deploy complete." -ForegroundColor Green
+    Write-Host "  Tip: disable the standalone BetterStagger addon while testing Extended Stagger." -ForegroundColor Yellow
 }
 
 if (-not (Test-Path -LiteralPath $WoWAddOnsPath)) {

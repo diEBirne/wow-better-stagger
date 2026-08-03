@@ -1,4 +1,4 @@
-# EllesmereUI Enhanced Stagger (local)
+# EllesmereUI Extended Stagger (local)
 
 Local-only integration of Better Stagger’s engine into **EllesmereUI Resource Bars**.
 
@@ -6,7 +6,7 @@ This is **not** an official Ellesmere module and is **not** intended for upstrea
 
 ## What it does
 
-- Adds an **Enhanced Stagger** section (Brewmaster only) under Resource Bars → Class, Power and Health Bars.
+- Adds an **Extended Stagger** section (Brewmaster only) under Resource Bars → Class, Power and Health Bars.
 - Hosts enhancements on the existing Class Resource bar (`ERB_SecondaryBar`).
 - Toggle is **default OFF** (stock EUI stagger when off).
 
@@ -32,11 +32,11 @@ Standalone Better Stagger:
 .\scripts\deploy.ps1 -Target Standalone
 ```
 
-When testing Enhanced Stagger, disable the standalone **BetterStagger** addon to avoid a second bar.
+When testing Extended Stagger, disable the standalone **BetterStagger** addon to avoid a second bar.
 
 ## Files installed into Resource Bars
 
-- `EnhancedStagger.lua` — runtime (ceiling, colors, breakpoint lines, glow, sound)
+- `EnhancedStagger.lua` — runtime (ceiling, colors, zone lines, sound)
 - `EnhancedStagger_Options.lua` — DualRow / cog UI
 - TOC entries for both
 - Idempotent hook call inside `UpdateSecondaryResource` stagger path
@@ -44,11 +44,11 @@ When testing Enhanced Stagger, disable the standalone **BetterStagger** addon to
 ## Manual test checklist
 
 1. Brewmaster: Resource Bars → Class Resource visible.
-2. **Enhanced Stagger** toggle off → stock green/yellow/red stagger.
-3. Toggle on → scale default 400%, breakpoint lines, rule colors.
-4. Change Scale Maximum / colors / glow / sound via DualRows + cog.
+2. **Extended Stagger** toggle off → stock green/yellow/red stagger.
+3. Toggle on → scale default 400%, zone divider lines, zone colors.
+4. Change Scale Maximum / colors / sound via DualRows + cog.
 5. Unlock Mode still moves the Class Resource bar.
-6. Spec away from Brewmaster → Enhanced section hidden; no extra cost.
+6. Spec away from Brewmaster → Extended section hidden; no extra cost.
 7. `/reload` preserves settings under `EllesmereUIResourceBarsDB`.
 
 ## Notes

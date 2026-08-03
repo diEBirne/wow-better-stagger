@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
--- Enhanced Stagger options (EllesmereUI Resource Bars)
+-- Extended Stagger options (EllesmereUI Resource Bars)
 -- Evenly spaced breakpoints from Scale Maximum + per-zone fill colors.
 -------------------------------------------------------------------------------
 local ADDON_NAME, ns = ...
@@ -91,15 +91,15 @@ local function BuildEnhancedSection(parent, y)
     end
 
     local _, h
-    _, h = W:SectionHeader(parent, "ENHANCED STAGGER", y)
+    _, h = W:SectionHeader(parent, "Extended Stagger", y)
     y = y - h
 
     local enableRow
     enableRow, h = W:DualRow(parent, y,
         {
             type = "toggle",
-            text = "Enhanced Stagger",
-            tooltip = "Replaces default Brewmaster stagger coloring and ceiling with evenly spaced breakpoint lines and per-zone fill colors on the Class Resource bar.",
+            text = "Extended Stagger",
+            tooltip = "Replaces default Brewmaster stagger coloring and ceiling with color zones and optional divider lines on the Class Resource bar.",
             getValue = function()
                 local sp = Secondary()
                 return sp and sp.enhancedStagger
@@ -123,12 +123,12 @@ local function BuildEnhancedSection(parent, y)
         {
             type = "slider",
             text = "Scale Maximum",
-            tooltip = "Stagger percent required to fully fill the bar. Breakpoint lines are placed evenly across this scale.",
+            tooltip = "Stagger percent required to fully fill the bar. Zone divider lines are spaced evenly across this scale.",
             min = 100,
             max = 500,
             step = 10,
             disabled = EnhancedOff,
-            disabledTooltip = "Enhanced Stagger",
+            disabledTooltip = "Extended Stagger",
             getValue = function()
                 local s = Settings()
                 return s and s.scaleMaximum or 400
@@ -146,10 +146,6 @@ local function BuildEnhancedSection(parent, y)
                 else
                     RefreshLive()
                 end
-                -- Refresh zone tooltips / active-state alphas without tearing down sliders mid-drag.
-                if not EllesmereUI._sliderDragging and EllesmereUI.RefreshPage then
-                    EllesmereUI:RefreshPage()
-                end
             end,
         }
     )
@@ -158,65 +154,10 @@ local function BuildEnhancedSection(parent, y)
     do
         local rgn = enableRow._leftRegion
         local _, cogShow = EllesmereUI.BuildCogPopup({
-            title = "Enhanced Stagger",
-            minWidth = 300,
+            title = "Extended Stagger",
+            minWidth = 280,
             captureRegion = rgn,
             rows = {
-                {
-                    type = "toggle",
-                    label = "Breakpoint Lines",
-                    get = function()
-                        local s = Settings()
-                        return not s or s.breakpointsEnabled ~= false
-                    end,
-                    set = function(v)
-                        local s = Settings()
-                        if s then
-                            s.breakpointsEnabled = v and true or false
-                            RefreshLive()
-                        end
-                    end,
-                },
-                {
-                    type = "slider",
-                    label = "Line Thickness",
-                    min = 1,
-                    max = 4,
-                    step = 1,
-                    get = function()
-                        local s = Settings()
-                        return s and s.lineThickness or 1
-                    end,
-                    set = function(v)
-                        local s = Settings()
-                        if s then
-                            s.lineThickness = v
-                            RefreshLive()
-                        end
-                    end,
-                },
-                {
-                    type = "multiswatch",
-                    label = "Line Color",
-                    swatches = {
-                        {
-                            tooltip = "Breakpoint Line Color",
-                            hasAlpha = true,
-                            getValue = function()
-                                local s = Settings()
-                                local c = s and s.lineColor or { 1, 1, 1, 0.6 }
-                                return c[1], c[2], c[3], c[4] or 0.6
-                            end,
-                            setValue = function(r, g, b, a)
-                                local s = Settings()
-                                if s then
-                                    s.lineColor = { r, g, b, a or 0.6 }
-                                    RefreshLive()
-                                end
-                            end,
-                        },
-                    },
-                },
                 {
                     type = "toggle",
                     label = "Sound Warning",
@@ -302,7 +243,7 @@ local function BuildEnhancedSection(parent, y)
             cogDis:SetFrameLevel(cogBtn:GetFrameLevel() + 5)
             cogDis:EnableMouse(true)
             cogDis:SetScript("OnEnter", function()
-                EllesmereUI.ShowWidgetTooltip(cogBtn, EllesmereUI.DisabledTooltip("Enhanced Stagger"))
+                EllesmereUI.ShowWidgetTooltip(cogBtn, EllesmereUI.DisabledTooltip("Extended Stagger"))
             end)
             cogDis:SetScript("OnLeave", function()
                 EllesmereUI.HideWidgetTooltip()
@@ -324,26 +265,26 @@ local function BuildEnhancedSection(parent, y)
         end
     end
 
-    local countRow
-    countRow, h = W:DualRow(parent, y,
+    local zonesRow
+    zonesRow, h = W:DualRow(parent, y,
         {
             type = "slider",
-            text = "Breakpoint Lines",
-            tooltip = "Number of evenly spaced lines across Scale Maximum. 1 line = 2 color zones, 4 lines = 5 color zones.",
-            min = 1,
-            max = 4,
+            text = "Zones",
+            tooltip = "Number of color zones across Scale Maximum. Divider lines are placed between zones (Zones - 1). Example: 4 zones at 400% -> lines at 100 / 200 / 300.",
+            min = 2,
+            max = 5,
             step = 1,
             disabled = EnhancedOff,
-            disabledTooltip = "Enhanced Stagger",
+            disabledTooltip = "Extended Stagger",
             getValue = function()
-                return ES.GetBreakpointCount()
+                return ES.GetZoneCount()
             end,
             setValue = function(v)
                 local s = Settings()
                 if not s then
                     return
                 end
-                s.breakpointCount = v
+                s.zoneCount = v
                 RefreshLive()
                 if not EllesmereUI._sliderDragging and EllesmereUI.RefreshPage then
                     EllesmereUI:RefreshPage()
@@ -351,111 +292,139 @@ local function BuildEnhancedSection(parent, y)
             end,
         },
         {
-            type = "label",
-            text = "",
-        }
-    )
-    y = y - h
-
-    local testRow
-    testRow, h = W:DualRow(parent, y,
-        {
-            type = "toggle",
-            text = "Test Mode",
-            tooltip = "Temporarily simulates Stagger on the Class Resource bar so you can preview colors, scale, and breakpoint lines without taking damage.",
+            type = "multiSwatch",
+            text = "Zone Colors",
+            tooltip = "Fill colors from lowest Stagger (left) to highest (right). Only the first N swatches are active for the current Zones value; the rest are saved for later.",
             disabled = EnhancedOff,
-            disabledTooltip = "Enhanced Stagger",
-            getValue = function()
-                local s = Settings()
-                return s and s.testMode
-            end,
-            setValue = EllesmereUI.DependentSetValue(
-                function()
-                    local s = Settings()
-                    return s and s.testMode
-                end,
-                function(v)
-                    local s = Settings()
-                    if not s then
-                        return
-                    end
-                    s.testMode = v and true or false
-                    RefreshPage()
+            disabledTooltip = "Extended Stagger",
+            swatches = (function()
+                local swatches = {}
+                local labels = {
+                    "Zone 1 (lowest Stagger)",
+                    "Zone 2",
+                    "Zone 3",
+                    "Zone 4",
+                    "Zone 5 (highest Stagger)",
+                }
+                for zoneIndex = 1, MAX_ZONES do
+                    local index = zoneIndex
+                    swatches[index] = {
+                        tooltip = labels[index],
+                        hasAlpha = true,
+                        getValue = function()
+                            return ES.GetZoneColor(index)
+                        end,
+                        setValue = function(r, g, b, a)
+                            ES.SetZoneColor(index, r, g, b, a)
+                            RefreshLive()
+                        end,
+                        refreshAlpha = function()
+                            if EnhancedOff() then
+                                return 0.3
+                            end
+                            local activeZones = ES.GetZoneCount()
+                            return index <= activeZones and 1 or 0.35
+                        end,
+                    }
                 end
-            ),
-        },
-        {
-            type = "slider",
-            text = "Test Stagger %",
-            tooltip = "Simulated Stagger percent used while Test Mode is on.",
-            min = 0,
-            max = 500,
-            step = 5,
-            disabled = function()
-                local s = Settings()
-                return EnhancedOff() or not (s and s.testMode)
-            end,
-            disabledTooltip = "Test Mode",
-            getValue = function()
-                local s = Settings()
-                return s and s.testStaggerPercent or 200
-            end,
-            setValue = function(v)
-                local s = Settings()
-                if s then
-                    s.testStaggerPercent = v
-                    RefreshLive()
-                end
-            end,
+                return swatches
+            end)(),
         }
     )
     y = y - h
 
-    -- Always show 5 zone colors. Inactive zones (beyond current breakpointCount+1)
-    -- stay editable so raising the line count later keeps configured colors.
-    local activeZones = ES.GetZoneCount()
-    for zoneIndex = 1, MAX_ZONES do
-        local index = zoneIndex
-        local isActive = index <= activeZones
-        local rangeLabel = ES.GetZoneRangeLabel(index)
-        local row
-        row, h = W:DualRow(parent, y,
-            {
-                type = "label",
-                text = "Zone " .. index,
-                tooltip = isActive
-                    and ("Fill color for Stagger " .. rangeLabel .. " at the current Scale Maximum / Breakpoint Lines.")
-                    or ("Stored for later. Currently unused because Breakpoint Lines only create " .. activeZones .. " zones. Range would be " .. rangeLabel .. " if this zone were active."),
+    -- Divider-line appearance lives on the Zones row cog.
+    do
+        local rgn = zonesRow._leftRegion
+        local _, cogShow = EllesmereUI.BuildCogPopup({
+            title = "Zone Dividers",
+            minWidth = 280,
+            captureRegion = rgn,
+            rows = {
+                {
+                    type = "toggle",
+                    label = "Show Divider Lines",
+                    tooltip = "Draw vertical divider lines between color zones on the bar.",
+                    get = function()
+                        local s = Settings()
+                        return not s or s.breakpointsEnabled ~= false
+                    end,
+                    set = function(v)
+                        local s = Settings()
+                        if s then
+                            s.breakpointsEnabled = v and true or false
+                            RefreshLive()
+                        end
+                    end,
+                },
+                {
+                    type = "slider",
+                    label = "Line Thickness",
+                    min = 1,
+                    max = 4,
+                    step = 1,
+                    get = function()
+                        local s = Settings()
+                        return s and s.lineThickness or 2
+                    end,
+                    set = function(v)
+                        local s = Settings()
+                        if s then
+                            s.lineThickness = v
+                            RefreshLive()
+                        end
+                    end,
+                },
+                {
+                    type = "multiswatch",
+                    label = "Line Color",
+                    swatches = {
+                        {
+                            tooltip = "Divider Line Color",
+                            hasAlpha = true,
+                            getValue = function()
+                                local s = Settings()
+                                local c = s and s.lineColor or { 0, 0, 0, 1 }
+                                return c[1], c[2], c[3], c[4] or 0.6
+                            end,
+                            setValue = function(r, g, b, a)
+                                local s = Settings()
+                                if s then
+                                    s.lineColor = { r, g, b, a or 1 }
+                                    RefreshLive()
+                                end
+                            end,
+                        },
+                    },
+                },
             },
-            {
-                type = "colorpicker",
-                text = isActive and rangeLabel or ("Unused (" .. rangeLabel .. ")"),
-                hasAlpha = true,
-                disabled = EnhancedOff,
-                disabledTooltip = "Enhanced Stagger",
-                getValue = function()
-                    return ES.GetZoneColor(index)
-                end,
-                setValue = function(r, g, b, a)
-                    ES.SetZoneColor(index, r, g, b, a)
-                    RefreshLive()
-                end,
-            }
-        )
-        y = y - h
-
-        -- Dim inactive zone swatches slightly for clarity.
-        if row and row._rightRegion and not isActive then
-            local function DimUnused()
-                local control = row._rightRegion._control
-                if control then
-                    control:SetAlpha(EnhancedOff() and 0.25 or 0.45)
+        })
+        local cogBtn = MakeInlineCog(rgn, cogShow)
+        if cogBtn then
+            local cogDis = CreateFrame("Frame", nil, rgn)
+            cogDis:SetAllPoints(cogBtn)
+            cogDis:SetFrameLevel(cogBtn:GetFrameLevel() + 5)
+            cogDis:EnableMouse(true)
+            cogDis:SetScript("OnEnter", function()
+                EllesmereUI.ShowWidgetTooltip(cogBtn, EllesmereUI.DisabledTooltip("Extended Stagger"))
+            end)
+            cogDis:SetScript("OnLeave", function()
+                EllesmereUI.HideWidgetTooltip()
+            end)
+            local function UpdateCogDis()
+                if EnhancedOff() then
+                    cogDis:Show()
+                    cogBtn:SetAlpha(0.15)
+                else
+                    cogDis:Hide()
+                    cogBtn:SetAlpha(0.4)
                 end
             end
+            cogBtn:HookScript("OnShow", UpdateCogDis)
             if EllesmereUI.RegisterWidgetRefresh then
-                EllesmereUI.RegisterWidgetRefresh(DimUnused)
+                EllesmereUI.RegisterWidgetRefresh(UpdateCogDis)
             end
-            DimUnused()
+            UpdateCogDis()
         end
     end
 

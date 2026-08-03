@@ -1,23 +1,24 @@
 -------------------------------------------------------------------------------
--- Enhanced Stagger (local EllesmereUI Resource Bars integration)
+-- Extended Stagger (local EllesmereUI Resource Bars integration)
 -- Opt-in Brewmaster stagger enhancements hosted on ERB_SecondaryBar.
 -- Default OFF. Zero cost when disabled / not Brewmaster.
 --
--- Model: breakpointCount (1-4) evenly divides Scale Maximum into zones.
--- Example at scale 400 with 3 breakpoints -> lines at 100 / 200 / 300,
--- and 4 fill-color zones. Five zone colors are always stored; unused
--- higher zones apply when the user raises breakpointCount.
+-- Model: zoneCount (2-5) evenly divides Scale Maximum.
+-- Divider lines = zoneCount - 1. Example: 4 zones at scale 400 -> lines at 100/200/300.
+-- Five zone colors are always stored; unused higher zones apply when zoneCount rises.
+--
+-- SavedVariables keys keep the enhancedStagger* names for compatibility.
 -------------------------------------------------------------------------------
 local ADDON_NAME, ns = ...
 
 local ES = {}
 ns.EnhancedStagger = ES
 
-local MAX_BREAKPOINT_LINES = 4
+local MAX_DIVIDER_LINES = 4
+local MIN_ZONES = 2
 local MAX_ZONES = 5
 local BREWMASTER_SPEC_ID = 268
 local UPDATE_INTERVAL = 0.1
-
 local DEFAULT_ZONE_COLORS = {
     { 0.1, 0.8, 0.1, 1 },
     { 0.9, 0.9, 0.1, 1 },
@@ -52,16 +53,14 @@ end
 
 local DEFAULT_SETTINGS = {
     scaleMaximum = 400,
-    breakpointCount = 3,
+    zoneCount = 4,
     breakpointsEnabled = true,
-    lineColor = { 1, 1, 1, 0.6 },
-    lineThickness = 1,
+    lineColor = { 0, 0, 0, 1 },
+    lineThickness = 2,
     soundEnabled = false,
     soundThreshold = 400,
     soundCooldownSeconds = 10,
     soundFile = "RAID_WARNING",
-    testMode = false,
-    testStaggerPercent = 200,
 }
 
 local SOUND_KEYS = {
@@ -76,15 +75,20 @@ local lastSoundTime = 0
 local elapsedSinceUpdate = 0
 local tickFrame = nil
 
-local function ClampBreakpointCount(value)
-    value = math.floor((tonumber(value) or 3) + 0.5)
-    if value < 1 then
-        return 1
+local function ClampZoneCount(value)
+    value = math.floor((tonumber(value) or 4) + 0.5)
+    if value < MIN_ZONES then
+        return MIN_ZONES
     end
-    if value > MAX_BREAKPOINT_LINES then
-        return MAX_BREAKPOINT_LINES
+    if value > MAX_ZONES then
+        return MAX_ZONES
     end
     return value
+end
+
+local function ClampDividerCount(value)
+    -- Divider lines are derived from zones: zones 2..5 -> lines 1..4.
+    return ClampZoneCount((tonumber(value) or 4)) - 1
 end
 
 local function NormalizeZoneColors(colors)
@@ -137,8 +141,8 @@ local function MigrateLegacySettings(settings)
     end
     if lineCount < 1 then
         lineCount = 3
-    elseif lineCount > MAX_BREAKPOINT_LINES then
-        lineCount = MAX_BREAKPOINT_LINES
+    elseif lineCount > MAX_DIVIDER_LINES then
+        lineCount = MAX_DIVIDER_LINES
     end
 
     -- Map sorted legacy colors onto zones (including the 0% baseline rule).
@@ -150,7 +154,8 @@ local function MigrateLegacySettings(settings)
         end
     end
 
-    settings.breakpointCount = lineCount
+    settings.zoneCount = lineCount + 1
+    settings.breakpointCount = nil
     settings.zoneColors = zoneColors
     settings.rules = nil
     settings.glowEnabled = nil
@@ -193,14 +198,21 @@ function ES.EnsureProfile(sp)
         end
     end
 
-    settings.breakpointCount = ClampBreakpointCount(settings.breakpointCount)
+    -- Migrate older breakpointCount (lines) into zoneCount.
+    if settings.zoneCount == nil and settings.breakpointCount ~= nil then
+        settings.zoneCount = (tonumber(settings.breakpointCount) or 3) + 1
+    end
+    settings.zoneCount = ClampZoneCount(settings.zoneCount)
+    settings.breakpointCount = nil
     settings.zoneColors = NormalizeZoneColors(settings.zoneColors)
     settings.glowEnabled = nil
     settings.glowThreshold = nil
     settings.rules = nil
+    settings.testMode = nil
+    settings.testStaggerPercent = nil
 
     if type(settings.lineColor) ~= "table" then
-        settings.lineColor = { 1, 1, 1, 0.6 }
+        settings.lineColor = { 0, 0, 0, 1 }
     end
     return settings
 end
@@ -218,30 +230,30 @@ function ES.GetScaleMaximum(sp)
     return maximum
 end
 
-function ES.GetBreakpointCount(sp)
+function ES.GetZoneCount(sp)
     local settings = ES.GetSettings(sp)
-    return ClampBreakpointCount(settings and settings.breakpointCount)
+    return ClampZoneCount(settings and settings.zoneCount)
 end
 
--- Evenly spaced absolute Stagger % values for the current scale/count.
+function ES.GetDividerCount(sp)
+    return ES.GetZoneCount(sp) - 1
+end
+
+-- Evenly spaced absolute Stagger % values for divider lines.
 function ES.GetBreakpointValues(sp)
     local scaleMaximum = ES.GetScaleMaximum(sp)
-    local count = ES.GetBreakpointCount(sp)
+    local lineCount = ES.GetDividerCount(sp)
     local values = {}
-    for index = 1, count do
-        values[index] = scaleMaximum * index / (count + 1)
+    for index = 1, lineCount do
+        values[index] = scaleMaximum * index / (lineCount + 1)
     end
     return values
 end
 
-function ES.GetZoneCount(sp)
-    return ES.GetBreakpointCount(sp) + 1
-end
-
 function ES.GetZoneRangeLabel(zoneIndex, sp)
     local scaleMaximum = ES.GetScaleMaximum(sp)
-    local count = ES.GetBreakpointCount(sp)
-    local zoneCount = count + 1
+    local zoneCount = ES.GetZoneCount(sp)
+    local lineCount = zoneCount - 1
     zoneIndex = math.max(1, math.min(MAX_ZONES, math.floor(tonumber(zoneIndex) or 1)))
 
     local function RoundPct(value)
@@ -249,26 +261,27 @@ function ES.GetZoneRangeLabel(zoneIndex, sp)
     end
 
     if zoneIndex == 1 then
-        local hi = RoundPct(scaleMaximum / (count + 1))
+        local hi = RoundPct(scaleMaximum / zoneCount)
         return string.format("0%% – %d%%", hi)
     end
     if zoneIndex >= zoneCount then
-        local lo = RoundPct(scaleMaximum * count / (count + 1))
+        local lo = RoundPct(scaleMaximum * lineCount / zoneCount)
         return string.format("%d%%+", lo)
     end
-    local lo = RoundPct(scaleMaximum * (zoneIndex - 1) / (count + 1))
-    local hi = RoundPct(scaleMaximum * zoneIndex / (count + 1))
+    local lo = RoundPct(scaleMaximum * (zoneIndex - 1) / zoneCount)
+    local hi = RoundPct(scaleMaximum * zoneIndex / zoneCount)
     return string.format("%d%% – %d%%", lo, hi)
 end
 
 function ES.GetColorForStagger(staggerPercent, sp)
     local settings = ES.GetSettings(sp)
     local scaleMaximum = ES.GetScaleMaximum(sp)
-    local count = ES.GetBreakpointCount(sp)
+    local zoneCount = ES.GetZoneCount(sp)
+    local lineCount = zoneCount - 1
     local colors = NormalizeZoneColors(settings and settings.zoneColors)
     local zone = 1
-    for index = 1, count do
-        local threshold = scaleMaximum * index / (count + 1)
+    for index = 1, lineCount do
+        local threshold = scaleMaximum * index / zoneCount
         if staggerPercent >= threshold then
             zone = index + 1
         end
@@ -344,9 +357,9 @@ local function EnsureOverlay(bar)
     overlay:SetFrameLevel(((inner and inner:GetFrameLevel()) or (bar:GetFrameLevel() or 0)) + 2)
 
     overlay.lines = {}
-    for index = 1, MAX_BREAKPOINT_LINES do
+    for index = 1, MAX_DIVIDER_LINES do
         local line = overlay:CreateTexture(nil, "OVERLAY", nil, 7)
-        line:SetColorTexture(1, 1, 1, 0.6)
+        line:SetColorTexture(0, 0, 0, 1)
         if line.SetSnapToPixelGrid then
             line:SetSnapToPixelGrid(false)
             line:SetTexelSnappingBias(0)
@@ -364,7 +377,7 @@ local function HideOverlay(bar)
         return
     end
     bar._esOverlay:Hide()
-    for index = 1, MAX_BREAKPOINT_LINES do
+    for index = 1, MAX_DIVIDER_LINES do
         local line = bar._esOverlay.lines[index]
         if line then
             line:Hide()
@@ -382,45 +395,46 @@ local function UpdateBreakpointLines(bar, settings, scaleMaximum)
     local width = bar:GetWidth() or 0
     local height = bar:GetHeight() or 0
     if width <= 0 or height <= 0 or not settings.breakpointsEnabled then
-        for index = 1, MAX_BREAKPOINT_LINES do
+        for index = 1, MAX_DIVIDER_LINES do
             overlay.lines[index]:Hide()
         end
         return
     end
 
     local PP = EllesmereUI and EllesmereUI.PP
-    local thickness = math.max(1, math.floor((tonumber(settings.lineThickness) or 1) + 0.5))
+    local thickness = math.max(1, math.floor((tonumber(settings.lineThickness) or 2) + 0.5))
     local pxW = PP and (thickness * (PP.mult or 1)) or thickness
     if pxW < 1 then
         pxW = 1
     end
 
-    local lineColor = CopyColor(settings.lineColor, { 1, 1, 1, 0.6 })
+    local lineColor = CopyColor(settings.lineColor, { 0, 0, 0, 1 })
     local values = ES.GetBreakpointValues()
     local drawn = 0
 
     for index = 1, #values do
         local value = values[index]
         local ratio = value / scaleMaximum
-        if ratio > 0 and ratio <= 1 and drawn < MAX_BREAKPOINT_LINES then
+        if ratio > 0 and ratio <= 1 and drawn < MAX_DIVIDER_LINES then
             drawn = drawn + 1
             local line = overlay.lines[drawn]
-            local off = PP and PP.Scale(width * ratio) or (width * ratio)
-            if off > width - pxW then
-                off = width - pxW
-            end
+            -- Center the tick on the breakpoint so thickness grows left and right.
+            local center = PP and PP.Scale(width * ratio) or (width * ratio)
+            local off = center - (pxW * 0.5)
             if off < 0 then
                 off = 0
+            elseif off > width - pxW then
+                off = width - pxW
             end
             line:ClearAllPoints()
-            line:SetColorTexture(lineColor[1], lineColor[2], lineColor[3], lineColor[4] or 0.6)
+            line:SetColorTexture(lineColor[1], lineColor[2], lineColor[3], lineColor[4] or 1)
             line:SetSize(pxW, height)
             line:SetPoint("TOPLEFT", overlay, "TOPLEFT", off, 0)
             line:Show()
         end
     end
 
-    for index = drawn + 1, MAX_BREAKPOINT_LINES do
+    for index = drawn + 1, MAX_DIVIDER_LINES do
         overlay.lines[index]:Hide()
     end
 end
@@ -443,16 +457,7 @@ local function GetSecondaryBar()
     return _G.ERB_SecondaryBar
 end
 
-local function ReadStagger(settings)
-    if settings and settings.testMode then
-        local percent = tonumber(settings.testStaggerPercent) or 200
-        local maxHealth = UnitHealthMax("player") or 1
-        if maxHealth <= 0 then
-            maxHealth = 1
-        end
-        return (percent / 100) * maxHealth, maxHealth, percent
-    end
-
+local function ReadStagger()
     local cur = UnitStagger("player") or 0
     local maxHealth = UnitHealthMax("player") or 1
     local curTainted = issecretvalue and issecretvalue(cur)
@@ -503,14 +508,7 @@ end
 
 function ES.IsActive(sp)
     sp = sp or ES.GetSecondary()
-    if not ES.IsEnabled(sp) then
-        return false
-    end
-    local settings = ES.GetSettings(sp)
-    if settings and settings.testMode then
-        return true
-    end
-    return ES.IsBrewmaster()
+    return ES.IsEnabled(sp) and ES.IsBrewmaster()
 end
 
 function ES.ApplyVisual(force)
@@ -527,7 +525,7 @@ function ES.ApplyVisual(force)
 
     local settings = ES.GetSettings(sp)
     local scaleMaximum = ES.GetScaleMaximum(sp)
-    local cur, maxHealth, staggerPercent = ReadStagger(settings)
+    local cur, maxHealth, staggerPercent = ReadStagger()
 
     if maxHealth and not (issecretvalue and issecretvalue(maxHealth)) and maxHealth > 0 then
         local barMax = maxHealth * scaleMaximum / 100
@@ -558,9 +556,7 @@ function ES.ApplyVisual(force)
                 end
             end
         end
-        if not settings.testMode then
-            UpdateSound(settings, staggerPercent)
-        end
+        UpdateSound(settings, staggerPercent)
     end
 
     UpdateBreakpointLines(bar, settings, scaleMaximum)

@@ -1,4 +1,4 @@
-# Ellesmere Enhanced Stagger — local in-game validation
+# Ellesmere Extended Stagger — local in-game validation
 
 After `.\scripts\deploy.ps1 -Target Ellesmere` and `/reload`:
 
@@ -10,16 +10,15 @@ After `.\scripts\deploy.ps1 -Target Ellesmere` and `/reload`:
 
 ## Checklist
 
-- [ ] Section **ENHANCED STAGGER** appears (Brewmaster only).
-- [ ] Toggle **Enhanced Stagger** is off by default.
+- [ ] Section **Extended Stagger** appears (Brewmaster only).
+- [ ] Toggle **Extended Stagger** is off by default.
 - [ ] Cog icon size matches other Class Resource cogs.
-- [ ] Enable Enhanced Stagger + **Test Mode**, set **Test Stagger %** to ~200.
-- [ ] Bar fill/color reacts immediately to Test Stagger %, Scale Maximum, and Fill Color.
-- [ ] Breakpoint lines are uniform thickness; **Line Thickness** in the cog changes them.
-- [ ] **Add Color Rule** / **-** remove works; labels are **From %** / **Fill Color**.
+- [ ] Enable Extended Stagger: Scale Maximum 400, Zones 4, divider lines on, thickness 2, line color black (fresh profile / after reset).
+- [ ] In combat / with Stagger: bar uses extended scale, zone colors, and divider lines.
+- [ ] Changing Scale Maximum / Zones / Zone Colors / line settings updates the live bar.
 - [ ] Unlock Mode still moves the Class Resource bar.
-- [ ] Spec off Brewmaster: Enhanced section hidden.
-- [ ] `/reload` keeps Enhanced settings.
+- [ ] Spec off Brewmaster: Extended section hidden.
+- [ ] `/reload` keeps Extended settings.
 
 ## Standalone regression
 
