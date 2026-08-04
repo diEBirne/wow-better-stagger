@@ -1,4 +1,4 @@
-# Deploy Better Stagger and/or local Ellesmere Extended Stagger integration.
+# Deploy Better Stagger and/or local Ellesmere Brewmaster Extended Stagger Bar.
 #
 # Usage:
 #   .\scripts\deploy.ps1
@@ -24,17 +24,19 @@ $StandaloneDestination = Join-Path $WoWAddOnsPath "BetterStagger"
 $EllesmereIntegration = Join-Path $RepoRoot "integrations\ellesmere"
 $ResourceBarsDestination = Join-Path $WoWAddOnsPath "EllesmereUIResourceBars"
 
-$HookBegin = "-- BEGIN ExtendedStagger hook"
-$HookEnd = "-- END ExtendedStagger hook"
+$HookBegin = "-- BEGIN BrewmasterExtendedStaggerBar hook"
+$HookEnd = "-- END BrewmasterExtendedStaggerBar hook"
 $HookBlock = @"
             $HookBegin
-            if powerType == "BREWMASTER_STAGGER" and sp.extendedStagger and ns.ExtendedStagger then
-                ns.ExtendedStagger.OnSecondaryUpdate(secondaryBar, sp, cur, maxC)
+            if powerType == "BREWMASTER_STAGGER" and sp.brewmasterExtendedStaggerBar and ns.BrewmasterExtendedStaggerBar then
+                ns.BrewmasterExtendedStaggerBar.OnSecondaryUpdate(secondaryBar, sp, cur, maxC)
             end
             $HookEnd
 "@
-$LegacyHookBegin = "-- BEGIN EnhancedStagger hook"
-$LegacyHookEnd = "-- END EnhancedStagger hook"
+$LegacyHookMarkers = @(
+    @{ Begin = "-- BEGIN EnhancedStagger hook"; End = "-- END EnhancedStagger hook" },
+    @{ Begin = "-- BEGIN ExtendedStagger hook"; End = "-- END ExtendedStagger hook" }
+)
 
 function Write-Step {
     param([string]$Message)
@@ -98,7 +100,7 @@ function Ensure-TocEntries {
 
     $lines = @(Get-Content -LiteralPath $TocPath)
     $filtered = foreach ($line in $lines) {
-        if ($line -match '^(?:Enhanced|Extended)Stagger(?:_Options)?\.lua\s*$') {
+        if ($line -match '^(?:Enhanced|Extended|BrewmasterExtended)Stagger(?:Bar)?(?:_Options)?\.lua\s*$') {
             continue
         }
         $line
@@ -109,21 +111,21 @@ function Ensure-TocEntries {
     foreach ($line in $filtered) {
         $out.Add($line)
         if (-not $inserted -and $line -match '^EUI_ResourceBars_Options\.lua\s*$') {
-            $out.Add("ExtendedStagger.lua")
-            $out.Add("ExtendedStagger_Options.lua")
+            $out.Add("BrewmasterExtendedStaggerBar.lua")
+            $out.Add("BrewmasterExtendedStaggerBar_Options.lua")
             $inserted = $true
         }
     }
 
     if (-not $inserted) {
-        throw "Could not find EUI_ResourceBars_Options.lua entry in TOC to insert Extended Stagger files."
+        throw "Could not find EUI_ResourceBars_Options.lua entry in TOC to insert Brewmaster Extended Stagger Bar files."
     }
 
     $newContent = ($out -join "`r`n") + "`r`n"
     $oldContent = (Get-Content -LiteralPath $TocPath -Raw)
     if ($newContent -ne $oldContent) {
         Set-Content -LiteralPath $TocPath -Value $newContent -NoNewline
-        Write-Step "Updated TOC load order for Extended Stagger"
+        Write-Step "Updated TOC load order for Brewmaster Extended Stagger Bar"
     }
 }
 
@@ -132,21 +134,19 @@ function Ensure-RuntimeHook {
 
     $content = Get-Content -LiteralPath $MainLuaPath -Raw
 
-    # Always strip previous marker blocks (current + legacy name) so re-deploy can relocate.
-    foreach ($pair in @(
-        @{ Begin = $HookBegin; End = $HookEnd },
-        @{ Begin = $LegacyHookBegin; End = $LegacyHookEnd }
-    )) {
+    # Always strip previous marker blocks (current + legacy names) so re-deploy can relocate.
+    $markers = @(@{ Begin = $HookBegin; End = $HookEnd }) + $LegacyHookMarkers
+    foreach ($pair in $markers) {
         if ($content -match [regex]::Escape($pair.Begin)) {
             $pattern = "(?s)[ \t]*" + [regex]::Escape($pair.Begin) + ".*?" + [regex]::Escape($pair.End) + "\r?\n?"
             $content = [regex]::Replace($content, $pattern, "")
-            Write-Step "Removed previous Extended Stagger runtime hook ($($pair.Begin))"
+            Write-Step "Removed previous Extended Stagger Bar runtime hook ($($pair.Begin))"
         }
     }
 
     $ceilingIdx = $content.IndexOf("Brewmaster stagger ceiling")
     if ($ceilingIdx -lt 0) {
-        throw "Could not locate Brewmaster stagger ceiling block for Extended Stagger hook."
+        throw "Could not locate Brewmaster stagger ceiling block for Extended Stagger Bar hook."
     }
 
     # Prefer AFTER the secondary-bar "-- Count text" block that follows the
@@ -215,12 +215,12 @@ function Ensure-RuntimeHook {
     }
 
     if ($closingEnd -lt 0) {
-        throw "Could not locate insertion point for Extended Stagger hook."
+        throw "Could not locate insertion point for Extended Stagger Bar hook."
     }
 
     $insertion = $content.Substring(0, $closingEnd + 1) + $HookBlock + "`r`n" + $content.Substring($closingEnd + 1)
     Set-Content -LiteralPath $MainLuaPath -Value $insertion -NoNewline
-    Write-Step "Inserted Extended Stagger runtime hook $insertReason"
+    Write-Step "Inserted Extended Stagger Bar runtime hook $insertReason"
 }
 
 function Deploy-Ellesmere {
@@ -232,8 +232,8 @@ function Deploy-Ellesmere {
     }
 
     $files = @(
-        "ExtendedStagger.lua",
-        "ExtendedStagger_Options.lua"
+        "BrewmasterExtendedStaggerBar.lua",
+        "BrewmasterExtendedStaggerBar_Options.lua"
     )
 
     Write-Step "Ellesmere integration: $EllesmereIntegration"
@@ -244,7 +244,7 @@ function Deploy-Ellesmere {
             Write-Host "  copy $fileName"
         }
         Write-Host "  patch EllesmereUIResourceBars.toc"
-        Write-Host "  patch EllesmereUIResourceBars.lua (Extended Stagger hook)"
+        Write-Host "  patch EllesmereUIResourceBars.lua (Extended Stagger Bar hook)"
         return
     }
 
@@ -258,8 +258,12 @@ function Deploy-Ellesmere {
         Write-Step "Copied $fileName"
     }
 
-    # Remove legacy Enhanced* filenames from older local deploys.
-    foreach ($legacyName in @("EnhancedStagger.lua", "EnhancedStagger_Options.lua")) {
+    foreach ($legacyName in @(
+        "EnhancedStagger.lua",
+        "EnhancedStagger_Options.lua",
+        "ExtendedStagger.lua",
+        "ExtendedStagger_Options.lua"
+    )) {
         $legacyPath = Join-Path $ResourceBarsDestination $legacyName
         if (Test-Path -LiteralPath $legacyPath) {
             Remove-Item -LiteralPath $legacyPath -Force
@@ -272,8 +276,8 @@ function Deploy-Ellesmere {
     Ensure-TocEntries -TocPath $tocPath
     Ensure-RuntimeHook -MainLuaPath $mainLua
 
-    Write-Host "Ellesmere Extended Stagger deploy complete." -ForegroundColor Green
-    Write-Host "  Tip: disable the standalone BetterStagger addon while testing Extended Stagger." -ForegroundColor Yellow
+    Write-Host "Ellesmere Brewmaster Extended Stagger Bar deploy complete." -ForegroundColor Green
+    Write-Host "  Tip: disable the standalone BetterStagger addon while testing Extended Stagger Bar." -ForegroundColor Yellow
 }
 
 if (-not (Test-Path -LiteralPath $WoWAddOnsPath)) {

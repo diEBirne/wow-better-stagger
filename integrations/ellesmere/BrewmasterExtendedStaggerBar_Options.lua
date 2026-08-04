@@ -1,11 +1,12 @@
 -------------------------------------------------------------------------------
--- Extended Stagger options (EllesmereUI Resource Bars)
--- Evenly spaced breakpoints from Scale Maximum + per-zone fill colors.
+-- Brewmaster Monk Extended Stagger Bar options (EllesmereUI Resource Bars)
+-- Integrated into CLASS RESOURCE BAR like Ironfur / Ignore Pain (no own section).
 -------------------------------------------------------------------------------
 local ADDON_NAME, ns = ...
 
 local BREWMASTER_SPEC_ID = 268
 local MAX_ZONES = 5
+local BAR_LABEL = "Brewmaster Monk Extended Stagger Bar"
 
 local function IsBrewmasterContext(ctx)
     if ctx and ctx.advanced then
@@ -21,7 +22,7 @@ local function IsBrewmasterContext(ctx)
 end
 
 local function Secondary()
-    local ES = ns.ExtendedStagger
+    local ES = ns.BrewmasterExtendedStaggerBar
     if ES and ES.GetSecondary then
         return ES.GetSecondary()
     end
@@ -30,27 +31,27 @@ local function Secondary()
 end
 
 local function Settings()
-    local ES = ns.ExtendedStagger
+    local ES = ns.BrewmasterExtendedStaggerBar
     if ES and ES.EnsureProfile then
         return ES.EnsureProfile()
     end
     return nil
 end
 
-local function ExtendedOff()
+local function BarOff()
     local sp = Secondary()
-    return not (sp and sp.extendedStagger)
+    return not (sp and sp.brewmasterExtendedStaggerBar)
 end
 
 local function RefreshLive()
-    local ES = ns.ExtendedStagger
+    local ES = ns.BrewmasterExtendedStaggerBar
     if ES and ES.ApplyVisual then
         ES.ApplyVisual(true)
     end
 end
 
 local function RefreshPage()
-    local ES = ns.ExtendedStagger
+    local ES = ns.BrewmasterExtendedStaggerBar
     if ES and ES.Refresh then
         ES.Refresh(true, true)
     elseif EllesmereUI and EllesmereUI.RefreshPage then
@@ -83,39 +84,37 @@ local function MakeInlineCog(rgn, showFn)
     return cogBtn
 end
 
-local function BuildExtendedSection(parent, y)
+-- Rows inside CLASS RESOURCE BAR (same pattern as Ironfur / Ignore Pain).
+local function AppendBrewmasterExtendedStaggerBarRows(parent, y)
     local W = EllesmereUI.Widgets
-    local ES = ns.ExtendedStagger
+    local ES = ns.BrewmasterExtendedStaggerBar
     if not W or not ES then
         return y
     end
     ES.EnsureProfile()
 
     local _, h
-    _, h = W:SectionHeader(parent, "Extended Stagger", y)
-    y = y - h
-
     local enableRow
     enableRow, h = W:DualRow(parent, y,
         {
             type = "toggle",
-            text = "Extended Stagger",
+            text = BAR_LABEL,
             tooltip = "Adds custom color zones and optional divider lines to the Class Resource stagger bar.",
             getValue = function()
                 local sp = Secondary()
-                return sp and sp.extendedStagger
+                return sp and sp.brewmasterExtendedStaggerBar
             end,
             setValue = EllesmereUI.DependentSetValue(
                 function()
                     local sp = Secondary()
-                    return sp and sp.extendedStagger
+                    return sp and sp.brewmasterExtendedStaggerBar
                 end,
                 function(v)
                     local sp = Secondary()
                     if not sp then
                         return
                     end
-                    sp.extendedStagger = v and true or false
+                    sp.brewmasterExtendedStaggerBar = v and true or false
                     ES.SyncCeiling(sp)
                     RefreshPage()
                 end
@@ -128,8 +127,8 @@ local function BuildExtendedSection(parent, y)
             min = 100,
             max = 500,
             step = 10,
-            disabled = ExtendedOff,
-            disabledTooltip = "Extended Stagger",
+            disabled = BarOff,
+            disabledTooltip = BAR_LABEL,
             getValue = function()
                 local s = Settings()
                 return s and s.scaleMaximum or 400
@@ -161,8 +160,8 @@ local function BuildExtendedSection(parent, y)
             min = 2,
             max = 5,
             step = 1,
-            disabled = ExtendedOff,
-            disabledTooltip = "Extended Stagger",
+            disabled = BarOff,
+            disabledTooltip = BAR_LABEL,
             getValue = function()
                 return ES.GetZoneCount()
             end,
@@ -182,8 +181,8 @@ local function BuildExtendedSection(parent, y)
             type = "multiSwatch",
             text = "Zone Colors",
             tooltip = "Fill colors from lowest Stagger (left) to highest (right).",
-            disabled = ExtendedOff,
-            disabledTooltip = "Extended Stagger",
+            disabled = BarOff,
+            disabledTooltip = BAR_LABEL,
             swatches = (function()
                 local swatches = {}
                 local labels = {
@@ -206,7 +205,7 @@ local function BuildExtendedSection(parent, y)
                             RefreshLive()
                         end,
                         refreshAlpha = function()
-                            if ExtendedOff() then
+                            if BarOff() then
                                 return 0.3
                             end
                             local activeZones = ES.GetZoneCount()
@@ -220,7 +219,6 @@ local function BuildExtendedSection(parent, y)
     )
     y = y - h
 
-    -- Divider-line appearance lives on the Zones row cog.
     do
         local rgn = zonesRow._leftRegion
         local _, cogShow = EllesmereUI.BuildCogPopup({
@@ -293,13 +291,13 @@ local function BuildExtendedSection(parent, y)
             cogDis:SetFrameLevel(cogBtn:GetFrameLevel() + 5)
             cogDis:EnableMouse(true)
             cogDis:SetScript("OnEnter", function()
-                EllesmereUI.ShowWidgetTooltip(cogBtn, EllesmereUI.DisabledTooltip("Extended Stagger"))
+                EllesmereUI.ShowWidgetTooltip(cogBtn, EllesmereUI.DisabledTooltip(BAR_LABEL))
             end)
             cogDis:SetScript("OnLeave", function()
                 EllesmereUI.HideWidgetTooltip()
             end)
             local function UpdateCogDis()
-                if ExtendedOff() then
+                if BarOff() then
                     cogDis:Show()
                     cogBtn:SetAlpha(0.15)
                 else
@@ -319,80 +317,23 @@ local function BuildExtendedSection(parent, y)
 end
 
 local function InstallOptionsHook()
-    if ns._ExtendedStaggerOptionsHooked then
+    if ns._BrewmasterExtendedStaggerBarOptionsHooked then
         return
     end
     if type(ns.ERB_BuildClassResourceSection) ~= "function" then
         return
     end
-    if not (EllesmereUI and type(EllesmereUI.BuildCursorAnchorRow) == "function") then
-        return
-    end
-    ns._ExtendedStaggerOptionsHooked = true
+    ns._BrewmasterExtendedStaggerBarOptionsHooked = true
 
-    -- Stock EUI appends "Anchor to Cursor" AFTER ERB_BuildClassResourceSection.
-    -- Injecting Extended Stagger inside that builder puts Cursor under our header.
-    -- Defer until after the Class Resource cursor row (or until Power if skipped).
-
-    local pendingClassSection = nil
-
-    local function ClearPending()
-        pendingClassSection = nil
-    end
-
-    local function AppendExtendedIfPending(parent, y)
-        local pending = pendingClassSection
-        if not pending or pending.parent ~= parent then
-            return y
-        end
-        ClearPending()
-        if not IsBrewmasterContext(pending.ctx) then
-            return y
-        end
-        return BuildExtendedSection(parent, y)
-    end
-
+    -- Append inside CLASS RESOURCE BAR (end of shared builder), like other
+    -- spec bars live in that section. Anchor to Cursor stays after the section.
     local originalClass = ns.ERB_BuildClassResourceSection
     ns.ERB_BuildClassResourceSection = function(parent, y, ctx)
         local newY, hdr, classEnableRow, classColorRow = originalClass(parent, y, ctx)
-        pendingClassSection = {
-            parent = parent,
-            ctx = ctx,
-        }
-        return newY, hdr, classEnableRow, classColorRow
-    end
-
-    local originalCursor = EllesmereUI.BuildCursorAnchorRow
-    EllesmereUI.BuildCursorAnchorRow = function(opts)
-        local row, h = originalCursor(opts)
-        local pending = pendingClassSection
-        if not pending or not opts or opts.parent ~= pending.parent then
-            return row, h
+        if IsBrewmasterContext(ctx) then
+            newY = AppendBrewmasterExtendedStaggerBarRows(parent, newY)
         end
-        if type(opts.getData) ~= "function" then
-            return row, h
-        end
-        local data = opts.getData()
-        local secondary = Secondary()
-        if not secondary or data ~= secondary then
-            return row, h
-        end
-
-        local yAfterCursor = (opts.y or 0) - h
-        local finalY = AppendExtendedIfPending(opts.parent, yAfterCursor)
-        local extraH = yAfterCursor - finalY
-        if extraH < 0 then
-            extraH = 0
-        end
-        return row, h + extraH
-    end
-
-    if type(ns.ERB_BuildPowerSection) == "function" then
-        local originalPower = ns.ERB_BuildPowerSection
-        ns.ERB_BuildPowerSection = function(parent, y, ctx)
-            y = AppendExtendedIfPending(parent, y)
-            return originalPower(parent, y, ctx)
-        end
+        return newY, hdr, classEnableRow, classColorProp
     end
 end
 

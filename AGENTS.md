@@ -77,15 +77,15 @@ WoW Retail addon — no automated test runner. Validate manually in-game.
 - **Default update interval:** 0.1 s (configurable 0.05–0.5 in Performance settings).
 - **Lint / Typecheck / Build:** N/A (Lua addon, no build step).
 - **Deploy Standalone:** `.\scripts\deploy.ps1 -Target Standalone`
-- **Deploy Ellesmere Extended Stagger (local):** `.\scripts\deploy.ps1 -Target Ellesmere`
+- **Deploy Ellesmere Brewmaster Extended Stagger Bar (local):** `.\scripts\deploy.ps1 -Target Ellesmere`
 
 ## Standalone freeze / EUI work
 
 - Tag `v0.2.0-standalone` freezes the pre-EUI standalone product.
 - Branch `eui-integration` holds Core split + local Ellesmere Resource Bars integration (`integrations/ellesmere/`).
 - Standalone engine lives under `BetterStagger/Core/`; shell is `Core.lua` + ConfigPanel/EditMode/Slash.
-- EUI product name: **Extended Stagger** (opt-in under Resource Bars → Class Resource). Not a separate EUI sidebar module. SavedVariables: `extendedStagger` / `extendedStaggerSettings` (migrates legacy `enhancedStagger*`).
-- Extended Stagger runtime (acceptance-oriented): default OFF; updates ride the Resource Bars secondary update hook gated on `sp.extendedStagger`; no OnUpdate ticker; `PLAYER_SPECIALIZATION_CHANGED` only while the toggle is ON; overlay created lazily. Options UI hooks still install at login (page-build only). No sound warning (kept out for cost/simplicity).
+- EUI product name: **Brewmaster Monk Extended Stagger Bar** (opt-in rows under Resource Bars -> CLASS RESOURCE BAR, same pattern as Ironfur / Ignore Pain). Not a separate EUI sidebar module or section header. SavedVariables: `brewmasterExtendedStaggerBar` / `brewmasterExtendedStaggerBarSettings` (migrates legacy `extendedStagger*` / `enhancedStagger*`).
+- Runtime (acceptance-oriented): default OFF; updates ride the Resource Bars secondary update hook gated on `sp.brewmasterExtendedStaggerBar`; no OnUpdate ticker; `PLAYER_SPECIALIZATION_CHANGED` only while the toggle is ON; overlay created lazily. Options UI hooks install at login (page-build only).
 
 ## Key Design Rule: Documentation Style and Quality
 

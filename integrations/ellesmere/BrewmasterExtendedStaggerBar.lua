@@ -1,6 +1,6 @@
 -------------------------------------------------------------------------------
--- Extended Stagger (local EllesmereUI Resource Bars integration)
--- Opt-in Brewmaster stagger enhancements hosted on ERB_SecondaryBar.
+-- Brewmaster Monk Extended Stagger Bar (local EllesmereUI Resource Bars integration)
+-- Opt-in Brewmaster Extended Stagger Bar hosted on ERB_SecondaryBar.
 -- Default OFF. Zero ongoing cost when disabled / not opted in.
 --
 -- Runtime model (EUI acceptance-oriented):
@@ -13,14 +13,14 @@
 -- Divider lines = zoneCount - 1. Example: 4 zones at scale 400 -> lines at 100/200/300.
 -- Five zone colors are always stored; unused higher zones apply when zoneCount rises.
 --
--- SavedVariables keys: extendedStagger / extendedStaggerSettings.
--- Migrates legacy enhancedStagger* keys once.
+-- SavedVariables keys: brewmasterExtendedStaggerBar / brewmasterExtendedStaggerBarSettings.
+-- Migrates legacy enhancedStagger* / extendedStagger* keys once.
 -- Retail and PTR: uses issecretvalue when present; no IS_121-only aura paths.
 -------------------------------------------------------------------------------
 local ADDON_NAME, ns = ...
 
 local ES = {}
-ns.ExtendedStagger = ES
+ns.BrewmasterExtendedStaggerBar = ES
 
 local MAX_DIVIDER_LINES = 4
 local MIN_ZONES = 2
@@ -173,25 +173,35 @@ function ES.EnsureProfile(sp)
         return nil
     end
 
-    -- Migrate legacy enhanced* keys from earlier local builds.
-    if sp.extendedStagger == nil and sp.enhancedStagger ~= nil then
-        sp.extendedStagger = sp.enhancedStagger and true or false
+    -- Migrate legacy keys from earlier local builds.
+    if sp.brewmasterExtendedStaggerBar == nil then
+        if sp.extendedStagger ~= nil then
+            sp.brewmasterExtendedStaggerBar = sp.extendedStagger and true or false
+        elseif sp.enhancedStagger ~= nil then
+            sp.brewmasterExtendedStaggerBar = sp.enhancedStagger and true or false
+        end
     end
-    if type(sp.extendedStaggerSettings) ~= "table" and type(sp.enhancedStaggerSettings) == "table" then
-        sp.extendedStaggerSettings = sp.enhancedStaggerSettings
+    if type(sp.brewmasterExtendedStaggerBarSettings) ~= "table" then
+        if type(sp.extendedStaggerSettings) == "table" then
+            sp.brewmasterExtendedStaggerBarSettings = sp.extendedStaggerSettings
+        elseif type(sp.enhancedStaggerSettings) == "table" then
+            sp.brewmasterExtendedStaggerBarSettings = sp.enhancedStaggerSettings
+        end
     end
+    sp.extendedStagger = nil
+    sp.extendedStaggerSettings = nil
     sp.enhancedStagger = nil
     sp.enhancedStaggerSettings = nil
 
-    if sp.extendedStagger == nil then
-        sp.extendedStagger = false
+    if sp.brewmasterExtendedStaggerBar == nil then
+        sp.brewmasterExtendedStaggerBar = false
     end
-    if type(sp.extendedStaggerSettings) ~= "table" then
-        sp.extendedStaggerSettings = ES.GetDefaults()
-        return sp.extendedStaggerSettings
+    if type(sp.brewmasterExtendedStaggerBarSettings) ~= "table" then
+        sp.brewmasterExtendedStaggerBarSettings = ES.GetDefaults()
+        return sp.brewmasterExtendedStaggerBarSettings
     end
 
-    local settings = sp.extendedStaggerSettings
+    local settings = sp.brewmasterExtendedStaggerBarSettings
     MigrateLegacySettings(settings)
 
     for key, defaultValue in pairs(DEFAULT_SETTINGS) do
@@ -237,7 +247,7 @@ function ES.GetSettings(sp)
     if not sp then
         return nil
     end
-    local settings = sp.extendedStaggerSettings
+    local settings = sp.brewmasterExtendedStaggerBarSettings
     -- Hot path: settings already present and normalized by EnsureProfile / options.
     if type(settings) == "table" and type(settings.zoneColors) == "table" and settings.zoneCount ~= nil then
         return settings
@@ -505,7 +515,7 @@ function ES.SyncCeiling(sp)
         return
     end
     ES.EnsureProfile(sp)
-    if sp.extendedStagger then
+    if sp.brewmasterExtendedStaggerBar then
         if sp._esSavedCeiling == nil then
             sp._esSavedCeiling = sp.staggerCeilingPercent
         end
@@ -531,7 +541,7 @@ end
 
 function ES.IsEnabled(sp)
     sp = sp or ES.GetSecondary()
-    return sp and sp.extendedStagger and true or false
+    return sp and sp.brewmasterExtendedStaggerBar and true or false
 end
 
 function ES.IsActive(sp)
@@ -620,9 +630,9 @@ function ES.ApplyVisual(force, bar, sp, cur, maxHealth)
     UpdateBreakpointLines(bar, settings, scaleMaximum)
 end
 
--- Called from the Resource Bars secondary update hook (gated on sp.extendedStagger).
+-- Called from the Resource Bars secondary update hook (gated on sp.brewmasterExtendedStaggerBar).
 function ES.OnSecondaryUpdate(secondaryBar, sp, cur, maxC)
-    if not sp or not sp.extendedStagger then
+    if not sp or not sp.brewmasterExtendedStaggerBar then
         return
     end
     if not ES.IsBrewmaster() then
@@ -661,7 +671,7 @@ function ES.SetEnabled(enabled)
     if not sp then
         return
     end
-    sp.extendedStagger = not not enabled
+    sp.brewmasterExtendedStaggerBar = not not enabled
     ES.Refresh(true, true)
 end
 
@@ -677,7 +687,7 @@ boot:SetScript("OnEvent", function(self)
             return
         end
         ES.EnsureProfile(sp)
-        if not sp.extendedStagger then
+        if not sp.brewmasterExtendedStaggerBar then
             return
         end
         ES.SyncCeiling(sp)
