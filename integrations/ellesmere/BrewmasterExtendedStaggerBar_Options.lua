@@ -84,7 +84,8 @@ local function MakeInlineCog(rgn, showFn)
     return cogBtn
 end
 
--- Rows inside CLASS RESOURCE BAR (same pattern as Ironfur / Ignore Pain).
+-- Rows inside CLASS RESOURCE BAR, above "Show Class Resource"
+-- (same placement as Ironfur / Ignore Pain / Sweeping Strikes).
 local function AppendBrewmasterExtendedStaggerBarRows(parent, y)
     local W = EllesmereUI.Widgets
     local ES = ns.BrewmasterExtendedStaggerBar
@@ -325,22 +326,77 @@ local function InstallOptionsHook()
     end
     ns._BrewmasterExtendedStaggerBarOptionsHooked = true
 
-    -- Append inside CLASS RESOURCE BAR (end of shared builder), like other
-    -- spec bars live in that section. Anchor to Cursor stays after the section.
+    -- Inject above "Show Class Resource", matching Ironfur / Ignore Pain / Arms
+    -- (top of CLASS RESOURCE BAR, before the shared layout rows).
     local originalClass = ns.ERB_BuildClassResourceSection
     ns.ERB_BuildClassResourceSection = function(parent, y, ctx)
-        local newY, hdr, classEnableRow, classColorRow = originalClass(parent, y, ctx)
-        if IsBrewmasterContext(ctx) then
+        if not IsBrewmasterContext(ctx) then
+            return originalClass(parent, y, ctx)
+        end
+
+        local W = EllesmereUI.Widgets
+        if not W or type(W.DualRow) ~= "function" then
+            return originalClass(parent, y, ctx)
+        end
+
+        local originalDualRow = W.DualRow
+        local injected = false
+        W.DualRow = function(widgetSelf, rowParent, rowY, left, right, ...)
+            local extraH = 0
+            if (not injected) and rowParent == parent and left and left.text == "Show Class Resource" then
+                injected = true
+                local yBefore = rowY
+                rowY = AppendBrewmasterExtendedStaggerBarRows(rowParent, rowY)
+                extraH = yBefore - rowY
+                if extraH < 0 then
+                    extraH = 0
+                end
+            end
+            local row, h = originalDualRow(widgetSelf, rowParent, rowY, left, right, ...)
+            -- Caller does `y = y - h`; include injected rows so layout does not overlap.
+            return row, (h or 0) + extraH
+        end
+
+        local newY, hdr, classEnableRow, classColorProp = originalClass(parent, y, ctx)
+        W.DualRow = originalDualRow
+
+        -- Fallback if the Class Resource row label ever changes.
+        if not injected then
             newY = AppendBrewmasterExtendedStaggerBarRows(parent, newY)
         end
         return newY, hdr, classEnableRow, classColorProp
     end
 end
 
+-- EUI 8.8+: Resource Bars options live in LoadOnDemand EllesmereUIOptions.
+-- ERB_BuildClassResourceSection is defined only when that addon loads (often
+-- the first time the player opens settings), so keep listening until hooked.
 local boot = CreateFrame("Frame")
 boot:RegisterEvent("PLAYER_LOGIN")
-boot:SetScript("OnEvent", function(self)
+boot:RegisterEvent("ADDON_LOADED")
+boot:SetScript("OnEvent", function(self, event, name)
+    if event == "ADDON_LOADED" then
+        if name ~= "EllesmereUIOptions" then
+            return
+        end
+        -- Options files already ran (including IsLoggedIn init); hook immediately,
+        -- then one deferred pass in case registration order shifts.
+        InstallOptionsHook()
+        C_Timer.After(0, InstallOptionsHook)
+        if ns._BrewmasterExtendedStaggerBarOptionsHooked then
+            self:UnregisterEvent("ADDON_LOADED")
+        end
+        return
+    end
+
     self:UnregisterEvent("PLAYER_LOGIN")
+    InstallOptionsHook()
     C_Timer.After(0, InstallOptionsHook)
     C_Timer.After(0.5, InstallOptionsHook)
+    if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("EllesmereUIOptions") then
+        InstallOptionsHook()
+        if ns._BrewmasterExtendedStaggerBarOptionsHooked then
+            self:UnregisterEvent("ADDON_LOADED")
+        end
+    end
 end)

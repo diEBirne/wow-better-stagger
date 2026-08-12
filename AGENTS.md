@@ -77,7 +77,7 @@ WoW Retail addon — no automated test runner. Validate manually in-game.
 - **Default update interval:** 0.1 s (configurable 0.05–0.5 in Performance settings).
 - **Lint / Typecheck / Build:** N/A (Lua addon, no build step).
 - **Deploy Standalone:** `.\scripts\deploy.ps1 -Target Standalone`
-- **Deploy Ellesmere Brewmaster Extended Stagger Bar (local):** `.\scripts\deploy.ps1 -Target Ellesmere`
+- **Deploy Ellesmere Brewmaster Extended Stagger Bar (local):** `.\scripts\deploy.ps1 -Target Ellesmere` (re-run after any EllesmereUI / Resource Bars update; the updater wipes TOC entries, runtime hook, and copied Lua).
 
 ## Standalone freeze / EUI work
 
@@ -85,7 +85,8 @@ WoW Retail addon — no automated test runner. Validate manually in-game.
 - Branch `eui-integration` holds Core split + local Ellesmere Resource Bars integration (`integrations/ellesmere/`).
 - Standalone engine lives under `BetterStagger/Core/`; shell is `Core.lua` + ConfigPanel/EditMode/Slash.
 - EUI product name: **Brewmaster Monk Extended Stagger Bar** (opt-in rows under Resource Bars -> CLASS RESOURCE BAR, same pattern as Ironfur / Ignore Pain). Not a separate EUI sidebar module or section header. SavedVariables: `brewmasterExtendedStaggerBar` / `brewmasterExtendedStaggerBarSettings` (migrates legacy `extendedStagger*` / `enhancedStagger*`).
-- Runtime (acceptance-oriented): default OFF; updates ride the Resource Bars secondary update hook gated on `sp.brewmasterExtendedStaggerBar`; no OnUpdate ticker; `PLAYER_SPECIALIZATION_CHANGED` only while the toggle is ON; overlay created lazily. Options UI hooks install at login (page-build only).
+- Runtime (acceptance-oriented): default OFF; updates ride the Resource Bars secondary `SetValue` hook gated on `sp.brewmasterExtendedStaggerBar`; no OnUpdate ticker; `PLAYER_SPECIALIZATION_CHANGED` only while the toggle is ON; overlay created lazily.
+- EUI 8.8+: Resource Bars options moved to LoadOnDemand `EllesmereUIOptions`; deploy still patches `EllesmereUIResourceBars` (TOC after main lua + SetValue hook). Options UI wraps `ns.ERB_BuildClassResourceSection` when `EllesmereUIOptions` loads (not only at login).
 
 ## Key Design Rule: Documentation Style and Quality
 

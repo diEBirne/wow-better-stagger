@@ -106,19 +106,32 @@ function Ensure-TocEntries {
         $line
     }
 
+    # EUI 8.8+: options live in LoadOnDemand EllesmereUIOptions; Resource Bars TOC
+    # only lists runtime files. Prefer insert after the main lua. Fall back to the
+    # pre-8.8 Options.lua entry if an older install still has it.
+    $anchorPatterns = @(
+        '^EllesmereUIResourceBars\.lua\s*$',
+        '^EUI_ResourceBars_Options\.lua\s*$'
+    )
+
     $out = New-Object System.Collections.Generic.List[string]
     $inserted = $false
     foreach ($line in $filtered) {
         $out.Add($line)
-        if (-not $inserted -and $line -match '^EUI_ResourceBars_Options\.lua\s*$') {
-            $out.Add("BrewmasterExtendedStaggerBar.lua")
-            $out.Add("BrewmasterExtendedStaggerBar_Options.lua")
-            $inserted = $true
+        if (-not $inserted) {
+            foreach ($pattern in $anchorPatterns) {
+                if ($line -match $pattern) {
+                    $out.Add("BrewmasterExtendedStaggerBar.lua")
+                    $out.Add("BrewmasterExtendedStaggerBar_Options.lua")
+                    $inserted = $true
+                    break
+                }
+            }
         }
     }
 
     if (-not $inserted) {
-        throw "Could not find EUI_ResourceBars_Options.lua entry in TOC to insert Brewmaster Extended Stagger Bar files."
+        throw "Could not find EllesmereUIResourceBars.lua (or legacy EUI_ResourceBars_Options.lua) in TOC to insert Brewmaster Extended Stagger Bar files."
     }
 
     $newContent = ($out -join "`r`n") + "`r`n"
@@ -149,73 +162,45 @@ function Ensure-RuntimeHook {
         throw "Could not locate Brewmaster stagger ceiling block for Extended Stagger Bar hook."
     }
 
-    # Prefer AFTER the secondary-bar "-- Count text" block that follows the
-    # Brewmaster ceiling / SetValue path (not earlier unrelated Count text comments).
+    # Insert AFTER the bar-branch tainted/ease SetValue if/else that follows the
+    # Brewmaster ceiling. Do NOT search for "-- Count text": EUI 8.8+ places the
+    # next Count text comment in the pip/custom branch, which never runs for
+    # BREWMASTER_STAGGER and would make the hook a no-op.
     $afterCeiling = $content.Substring($ceilingIdx)
-    $countRel = $afterCeiling.IndexOf("-- Count text")
     $closingEnd = -1
     $insertReason = $null
 
-    if ($countRel -ge 0) {
-        $searchFrom = $ceilingIdx + $countRel
-        $depth = 0
-        $seenIf = $false
-        while ($searchFrom -lt $content.Length) {
-            $nextLineEnd = $content.IndexOf("`n", $searchFrom)
-            if ($nextLineEnd -lt 0) {
-                $nextLineEnd = $content.Length
-            }
-            $line = $content.Substring($searchFrom, $nextLineEnd - $searchFrom).Trim()
-            # Only count block-structured if/end (ignore inline if ... end).
-            if ($line -match '^if\b' -and $line -notmatch '\bend\s*$') {
-                $depth++
-                $seenIf = $true
-            } elseif ($line -eq 'end' -and $seenIf) {
-                $depth--
-                if ($depth -eq 0) {
-                    $closingEnd = $nextLineEnd
-                    $insertReason = "after secondary Count text block"
-                    break
-                }
-            }
-            $searchFrom = $nextLineEnd + 1
-        }
+    $easeIdx = $afterCeiling.IndexOf("secondaryBar:SetValue(cur, ns.EASE)")
+    if ($easeIdx -lt 0) {
+        throw "Could not locate secondaryBar:SetValue(cur, ns.EASE) after stagger ceiling."
     }
 
-    # Fallback: AFTER the tainted/ease SetValue if/else (older insertion point).
-    if ($closingEnd -lt 0) {
-        $easeIdx = $afterCeiling.IndexOf("secondaryBar:SetValue(cur, ns.EASE)")
-        if ($easeIdx -lt 0) {
-            throw "Could not locate secondaryBar:SetValue(cur, ns.EASE) after stagger ceiling."
-        }
+    $absoluteEase = $ceilingIdx + $easeIdx
+    $endIdx = $content.IndexOf("`n", $absoluteEase)
+    if ($endIdx -lt 0) {
+        throw "Could not find end of SetValue(ease) line."
+    }
 
-        $absoluteEase = $ceilingIdx + $easeIdx
-        $endIdx = $content.IndexOf("`n", $absoluteEase)
-        if ($endIdx -lt 0) {
-            throw "Could not find end of SetValue(ease) line."
+    $searchFrom = $endIdx + 1
+    while ($searchFrom -lt $content.Length) {
+        $nextLineEnd = $content.IndexOf("`n", $searchFrom)
+        if ($nextLineEnd -lt 0) {
+            $nextLineEnd = $content.Length
         }
-
-        $searchFrom = $endIdx + 1
-        while ($searchFrom -lt $content.Length) {
-            $nextLineEnd = $content.IndexOf("`n", $searchFrom)
-            if ($nextLineEnd -lt 0) {
-                $nextLineEnd = $content.Length
-            }
-            $line = $content.Substring($searchFrom, $nextLineEnd - $searchFrom).Trim()
-            if ($line -eq "end") {
-                $closingEnd = $nextLineEnd
-                $insertReason = "after SetValue branch (fallback)"
-                break
-            }
-            if ($line -ne "" -and $line -notmatch "^--") {
-                break
-            }
-            $searchFrom = $nextLineEnd + 1
+        $line = $content.Substring($searchFrom, $nextLineEnd - $searchFrom).Trim()
+        if ($line -eq "end") {
+            $closingEnd = $nextLineEnd
+            $insertReason = "after secondary SetValue branch"
+            break
         }
+        if ($line -ne "" -and $line -notmatch "^--") {
+            break
+        }
+        $searchFrom = $nextLineEnd + 1
     }
 
     if ($closingEnd -lt 0) {
-        throw "Could not locate insertion point for Extended Stagger Bar hook."
+        throw "Could not locate insertion point for Extended Stagger Bar hook (SetValue branch end)."
     }
 
     $insertion = $content.Substring(0, $closingEnd + 1) + $HookBlock + "`r`n" + $content.Substring($closingEnd + 1)

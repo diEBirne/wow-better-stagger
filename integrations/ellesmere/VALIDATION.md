@@ -10,7 +10,7 @@ After `.\scripts\deploy.ps1 -Target Ellesmere` and `/reload`:
 
 ## Checklist
 
-- [ ] No separate Extended section header; rows sit under **CLASS RESOURCE BAR**.
+- [ ] Toggle **Brewmaster Monk Extended Stagger Bar** sits near the top of **CLASS RESOURCE BAR** (above Show Class Resource), like Ironfur / Ignore Pain / Arms.
 - [ ] Toggle **Brewmaster Monk Extended Stagger Bar** is off by default; dependent controls greyed.
 - [ ] Enable: Scale Maximum / Zones / Zone Colors / divider cog work on the Class Resource bar.
 - [ ] Anchor to Cursor still belongs to Class Resource (after the shared section).
