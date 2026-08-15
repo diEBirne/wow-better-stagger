@@ -1,6 +1,6 @@
 # Ellesmere Brewmaster Extended Stagger Bar - local in-game validation
 
-After `.\scripts\deploy.ps1 -Target Ellesmere` and `/reload`:
+After `.\scripts\deploy-ellesmere.ps1` (or `.\deploy-ellesmere.bat`) and `/reload`:
 
 ## Prep
 

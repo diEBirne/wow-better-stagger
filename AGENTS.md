@@ -77,7 +77,7 @@ WoW Retail addon — no automated test runner. Validate manually in-game.
 - **Default update interval:** 0.1 s (configurable 0.05–0.5 in Performance settings).
 - **Lint / Typecheck / Build:** N/A (Lua addon, no build step).
 - **Deploy Standalone:** `.\scripts\deploy.ps1 -Target Standalone`
-- **Deploy Ellesmere Brewmaster Extended Stagger Bar (local):** `.\scripts\deploy.ps1 -Target Ellesmere` (re-run after any EllesmereUI / Resource Bars update; the updater wipes TOC entries, runtime hook, and copied Lua).
+- **Deploy Ellesmere Brewmaster Extended Stagger Bar (local):** `.\scripts\deploy-ellesmere.ps1` or `.\deploy-ellesmere.bat` (same as `.\scripts\deploy.ps1 -Target Ellesmere`). Re-run after any EllesmereUI / Resource Bars update; the updater wipes TOC entries, runtime hook, and copied Lua.
 
 ## Standalone freeze / EUI work
 

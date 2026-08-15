@@ -15,7 +15,9 @@ This is **not** an official Ellesmere module and is **not** intended for upstrea
 From the repo root:
 
 ```powershell
-.\scripts\deploy.ps1 -Target Ellesmere
+.\scripts\deploy-ellesmere.ps1
+# or: .\deploy-ellesmere.bat
+# or: .\scripts\deploy.ps1 -Target Ellesmere
 ```
 
 Then `/reload` in WoW.

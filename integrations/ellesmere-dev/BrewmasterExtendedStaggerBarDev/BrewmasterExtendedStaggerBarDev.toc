@@ -1,0 +1,8 @@
+## Interface: 120000, 120001, 120005, 120007, 120100
+## Title: Brewmaster Extended Stagger Bar Dev
+## Notes: Temporary screenshot test mode for the local EllesmereUI integration.
+## Author: di3Birne
+## Version: 0.1.0
+## Dependencies: EllesmereUIResourceBars
+
+BrewmasterExtendedStaggerBarDev.lua
