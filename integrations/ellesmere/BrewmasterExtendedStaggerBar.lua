@@ -9,9 +9,9 @@
 -- - Spec events register only while the feature toggle is ON.
 -- - Overlay textures are created lazily on first needed draw.
 --
--- Model: zoneCount (2-5) evenly divides Scale Maximum.
--- Divider lines = zoneCount - 1. Example: 4 zones at scale 400 -> lines at 100/200/300.
--- Five zone colors are always stored; unused higher zones apply when zoneCount rises.
+-- Model: scaleSteps (2-6), where each step represents 100% max health.
+-- Example: Scale 4 fills at 400%, with dividers at 100/200/300%.
+-- Six zone colors are stored; unused higher colors apply when Scale rises.
 --
 -- SavedVariables keys: brewmasterExtendedStaggerBar / brewmasterExtendedStaggerBarSettings.
 -- Migrates legacy enhancedStagger* / extendedStagger* keys once.
@@ -22,9 +22,10 @@ local ADDON_NAME, ns = ...
 local ES = {}
 ns.BrewmasterExtendedStaggerBar = ES
 
-local MAX_DIVIDER_LINES = 4
-local MIN_ZONES = 2
-local MAX_ZONES = 5
+local MAX_DIVIDER_LINES = 5
+local MIN_SCALE_STEPS = 2
+local MAX_SCALE_STEPS = 6
+local MAX_ZONES = MAX_SCALE_STEPS
 local BREWMASTER_SPEC_ID = 268
 local DEFAULT_ZONE_COLORS = {
     { 0.1, 0.8, 0.1, 1 },
@@ -32,6 +33,7 @@ local DEFAULT_ZONE_COLORS = {
     { 1.0, 0.5, 0.0, 1 },
     { 1.0, 0.0, 0.0, 1 },
     { 0.75, 0.0, 0.15, 1 },
+    { 0.45, 0.0, 0.35, 1 },
 }
 
 local function DeepCopy(source)
@@ -61,24 +63,24 @@ end
 local DEFAULT_LINE_COLOR = { 0, 0, 0, 1 } -- #000000, opacity 100%
 
 local DEFAULT_SETTINGS = {
-    scaleMaximum = 400,
-    zoneCount = 4,
+    scaleSteps = 4,
+    _esScaleModel = 1,
     breakpointsEnabled = true,
     lineColor = { 0, 0, 0, 1 }, -- #000000, opacity 100%
     lineThickness = 1,
 }
 
-local breakpointScratch = { nil, nil, nil, nil }
+local breakpointScratch = { nil, nil, nil, nil, nil }
 local eventFrame = nil
 local runtimeEventsActive = false
 
-local function ClampZoneCount(value)
+local function ClampScaleSteps(value)
     value = math.floor((tonumber(value) or 4) + 0.5)
-    if value < MIN_ZONES then
-        return MIN_ZONES
+    if value < MIN_SCALE_STEPS then
+        return MIN_SCALE_STEPS
     end
-    if value > MAX_ZONES then
-        return MAX_ZONES
+    if value > MAX_SCALE_STEPS then
+        return MAX_SCALE_STEPS
     end
     return value
 end
@@ -96,7 +98,7 @@ local function NormalizeZoneColors(colors)
     return result
 end
 
--- Migrate legacy rule-based settings into zone colors + breakpoint count.
+-- Migrate legacy rule-based settings into zone colors + scale steps.
 local function MigrateLegacySettings(settings)
     if type(settings) ~= "table" then
         return
@@ -145,7 +147,7 @@ local function MigrateLegacySettings(settings)
         end
     end
 
-    settings.zoneCount = lineCount + 1
+    settings.scaleSteps = lineCount + 1
     settings.breakpointCount = nil
     settings.zoneColors = zoneColors
     settings.rules = nil
@@ -204,16 +206,28 @@ function ES.EnsureProfile(sp)
     local settings = sp.brewmasterExtendedStaggerBarSettings
     MigrateLegacySettings(settings)
 
+    -- One-shot migration from independently configurable maximum + zone count.
+    -- Preserve the old visual maximum by rounding it to the nearest 100% step.
+    if settings._esScaleModel ~= 1 then
+        local legacyMaximum = tonumber(settings.scaleMaximum)
+        if legacyMaximum then
+            settings.scaleSteps = legacyMaximum / 100
+        elseif settings.zoneCount ~= nil then
+            settings.scaleSteps = settings.zoneCount
+        elseif settings.breakpointCount ~= nil then
+            settings.scaleSteps = (tonumber(settings.breakpointCount) or 3) + 1
+        end
+        settings._esScaleModel = 1
+    end
+
     for key, defaultValue in pairs(DEFAULT_SETTINGS) do
         if settings[key] == nil then
             settings[key] = DeepCopy(defaultValue)
         end
     end
-
-    if settings.zoneCount == nil and settings.breakpointCount ~= nil then
-        settings.zoneCount = (tonumber(settings.breakpointCount) or 3) + 1
-    end
-    settings.zoneCount = ClampZoneCount(settings.zoneCount)
+    settings.scaleSteps = ClampScaleSteps(settings.scaleSteps)
+    settings.scaleMaximum = nil
+    settings.zoneCount = nil
     settings.breakpointCount = nil
     settings.zoneColors = NormalizeZoneColors(settings.zoneColors)
     settings.glowEnabled = nil
@@ -249,24 +263,28 @@ function ES.GetSettings(sp)
     end
     local settings = sp.brewmasterExtendedStaggerBarSettings
     -- Hot path: settings already present and normalized by EnsureProfile / options.
-    if type(settings) == "table" and type(settings.zoneColors) == "table" and settings.zoneCount ~= nil then
+    if type(settings) == "table"
+        and type(settings.zoneColors) == "table"
+        and settings.scaleSteps ~= nil
+        and settings._esScaleModel == 1
+    then
         return settings
     end
     return ES.EnsureProfile(sp)
 end
 
-function ES.GetScaleMaximum(sp)
+function ES.GetScaleSteps(sp)
     local settings = ES.GetSettings(sp)
-    local maximum = tonumber(settings and settings.scaleMaximum) or 400
-    if maximum < 1 then
-        maximum = 1
-    end
-    return maximum
+    return ClampScaleSteps(settings and settings.scaleSteps)
 end
 
+function ES.GetScaleMaximum(sp)
+    return ES.GetScaleSteps(sp) * 100
+end
+
+-- Compatibility alias for the color-zone helpers.
 function ES.GetZoneCount(sp)
-    local settings = ES.GetSettings(sp)
-    return ClampZoneCount(settings and settings.zoneCount)
+    return ES.GetScaleSteps(sp)
 end
 
 function ES.GetDividerCount(sp)
@@ -276,12 +294,11 @@ end
 -- Evenly spaced absolute Stagger % values for divider lines.
 -- Reuses a scratch table to avoid hot-path allocations.
 function ES.GetBreakpointValues(sp)
-    local scaleMaximum = ES.GetScaleMaximum(sp)
-    local zoneCount = ES.GetZoneCount(sp)
-    local lineCount = zoneCount - 1
+    local scaleSteps = ES.GetScaleSteps(sp)
+    local lineCount = scaleSteps - 1
     for index = 1, MAX_DIVIDER_LINES do
         if index <= lineCount then
-            breakpointScratch[index] = scaleMaximum * index / zoneCount
+            breakpointScratch[index] = index * 100
         else
             breakpointScratch[index] = nil
         end
@@ -290,37 +307,30 @@ function ES.GetBreakpointValues(sp)
 end
 
 function ES.GetZoneRangeLabel(zoneIndex, sp)
-    local scaleMaximum = ES.GetScaleMaximum(sp)
-    local zoneCount = ES.GetZoneCount(sp)
-    local lineCount = zoneCount - 1
+    local scaleSteps = ES.GetScaleSteps(sp)
+    local lineCount = scaleSteps - 1
     zoneIndex = math.max(1, math.min(MAX_ZONES, math.floor(tonumber(zoneIndex) or 1)))
 
-    local function RoundPct(value)
-        return math.floor(value + 0.5)
-    end
-
     if zoneIndex == 1 then
-        local hi = RoundPct(scaleMaximum / zoneCount)
-        return string.format("0%% - %d%%", hi)
+        return "0% - 100%"
     end
-    if zoneIndex >= zoneCount then
-        local lo = RoundPct(scaleMaximum * lineCount / zoneCount)
+    if zoneIndex >= scaleSteps then
+        local lo = lineCount * 100
         return string.format("%d%%+", lo)
     end
-    local lo = RoundPct(scaleMaximum * (zoneIndex - 1) / zoneCount)
-    local hi = RoundPct(scaleMaximum * zoneIndex / zoneCount)
+    local lo = (zoneIndex - 1) * 100
+    local hi = zoneIndex * 100
     return string.format("%d%% - %d%%", lo, hi)
 end
 
 function ES.GetColorForStagger(staggerPercent, sp)
     local settings = ES.GetSettings(sp)
-    local scaleMaximum = tonumber(settings and settings.scaleMaximum) or 400
-    local zoneCount = ClampZoneCount(settings and settings.zoneCount)
-    local lineCount = zoneCount - 1
+    local scaleSteps = ClampScaleSteps(settings and settings.scaleSteps)
+    local lineCount = scaleSteps - 1
     local colors = settings and settings.zoneColors
     local zone = 1
     for index = 1, lineCount do
-        local threshold = scaleMaximum * index / zoneCount
+        local threshold = index * 100
         if staggerPercent >= threshold then
             zone = index + 1
         end
@@ -588,10 +598,7 @@ function ES.ApplyVisual(force, bar, sp, cur, maxHealth)
     end
 
     local settings = ES.GetSettings(sp)
-    local scaleMaximum = tonumber(settings.scaleMaximum) or 400
-    if scaleMaximum < 1 then
-        scaleMaximum = 1
-    end
+    local scaleMaximum = ES.GetScaleMaximum(sp)
 
     local staggerPercent
     cur, maxHealth, staggerPercent = ReadStagger(cur, maxHealth)

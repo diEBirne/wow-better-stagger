@@ -5,7 +5,7 @@
 local ADDON_NAME, ns = ...
 
 local BREWMASTER_SPEC_ID = 268
-local MAX_ZONES = 5
+local MAX_SCALE_STEPS = 6
 local BAR_LABEL = "Brewmaster Monk Extended Stagger Bar"
 
 local function IsBrewmasterContext(ctx)
@@ -100,7 +100,7 @@ local function AppendBrewmasterExtendedStaggerBarRows(parent, y)
         {
             type = "toggle",
             text = BAR_LABEL,
-            tooltip = "Adds custom color zones and optional divider lines to the Class Resource stagger bar.",
+            tooltip = "Adds 100% Scale steps with custom colors and optional divider lines to the Class Resource stagger bar.",
             getValue = function()
                 local sp = Secondary()
                 return sp and sp.brewmasterExtendedStaggerBar
@@ -123,16 +123,15 @@ local function AppendBrewmasterExtendedStaggerBarRows(parent, y)
         },
         {
             type = "slider",
-            text = "Scale Maximum",
-            tooltip = "How much Stagger (as % of max health) fills the bar completely.",
-            min = 100,
-            max = 500,
-            step = 10,
+            text = "Scale",
+            tooltip = "Number of 100% Stagger steps. Scale 4 fills the bar at 400% and places divider lines at 100%, 200%, and 300%.",
+            min = 2,
+            max = MAX_SCALE_STEPS,
+            step = 1,
             disabled = BarOff,
             disabledTooltip = BAR_LABEL,
             getValue = function()
-                local s = Settings()
-                return s and s.scaleMaximum or 400
+                return ES.GetScaleSteps()
             end,
             setValue = function(v)
                 local s = Settings()
@@ -140,60 +139,40 @@ local function AppendBrewmasterExtendedStaggerBarRows(parent, y)
                 if not s or not sp then
                     return
                 end
-                s.scaleMaximum = v
+                s.scaleSteps = v
                 ES.SyncCeiling(sp)
                 if ES.Refresh then
                     ES.Refresh(false, true)
                 else
                     RefreshLive()
                 end
+                if not EllesmereUI._sliderDragging and EllesmereUI.RefreshPage then
+                    EllesmereUI:RefreshPage()
+                end
             end,
         }
     )
     y = y - h
 
-    local zonesRow
-    zonesRow, h = W:DualRow(parent, y,
-        {
-            type = "slider",
-            text = "Zones",
-            tooltip = "How many color ranges the bar is split into.",
-            min = 2,
-            max = 5,
-            step = 1,
-            disabled = BarOff,
-            disabledTooltip = BAR_LABEL,
-            getValue = function()
-                return ES.GetZoneCount()
-            end,
-            setValue = function(v)
-                local s = Settings()
-                if not s then
-                    return
-                end
-                s.zoneCount = v
-                RefreshLive()
-                if not EllesmereUI._sliderDragging and EllesmereUI.RefreshPage then
-                    EllesmereUI:RefreshPage()
-                end
-            end,
-        },
+    local scaleColorsRow
+    scaleColorsRow, h = W:DualRow(parent, y,
         {
             type = "multiSwatch",
-            text = "Zone Colors",
-            tooltip = "Fill colors from lowest Stagger (left) to highest (right).",
+            text = "Scale Colors",
+            tooltip = "Fill color for each 100% Scale step, from lowest Stagger to highest.",
             disabled = BarOff,
             disabledTooltip = BAR_LABEL,
             swatches = (function()
                 local swatches = {}
                 local labels = {
-                    "Zone 1 (lowest Stagger)",
-                    "Zone 2",
-                    "Zone 3",
-                    "Zone 4",
-                    "Zone 5 (highest Stagger)",
+                    "Step 1: 0% - 100%",
+                    "Step 2: 100% - 200%",
+                    "Step 3: 200% - 300%",
+                    "Step 4: 300% - 400%",
+                    "Step 5: 400% - 500%",
+                    "Step 6: 500%+",
                 }
-                for zoneIndex = 1, MAX_ZONES do
+                for zoneIndex = 1, MAX_SCALE_STEPS do
                     local index = zoneIndex
                     swatches[index] = {
                         tooltip = labels[index],
@@ -209,28 +188,32 @@ local function AppendBrewmasterExtendedStaggerBarRows(parent, y)
                             if BarOff() then
                                 return 0.3
                             end
-                            local activeZones = ES.GetZoneCount()
-                            return index <= activeZones and 1 or 0.35
+                            local activeSteps = ES.GetScaleSteps()
+                            return index <= activeSteps and 1 or 0.35
                         end,
                     }
                 end
                 return swatches
             end)(),
+        },
+        {
+            type = "label",
+            text = "",
         }
     )
     y = y - h
 
     do
-        local rgn = zonesRow._leftRegion
+        local rgn = enableRow._rightRegion
         local _, cogShow = EllesmereUI.BuildCogPopup({
-            title = "Zone Dividers",
+            title = "Scale Dividers",
             minWidth = 280,
             captureRegion = rgn,
             rows = {
                 {
                     type = "toggle",
                     label = "Show Divider Lines",
-                    tooltip = "Show lines between the color zones on the bar.",
+                    tooltip = "Show lines between the 100% Scale steps on the bar.",
                     get = function()
                         local s = Settings()
                         return not s or s.breakpointsEnabled ~= false

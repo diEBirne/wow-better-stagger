@@ -8,6 +8,7 @@ This is **not** an official Ellesmere module and is **not** intended for upstrea
 
 - Adds **Brewmaster Monk Extended Stagger Bar** rows at the top of **CLASS RESOURCE BAR** (above Show Class Resource; same placement as Ironfur / Ignore Pain / Sweeping Strikes).
 - Hosts enhancements on the existing Class Resource bar (`ERB_SecondaryBar`).
+- Uses one **Scale** setting from 2-6. Each step represents 100% max health, controls one color range, and adds a divider before the next step.
 - Toggle is **default OFF** (stock EUI stagger when off); dependent controls are greyed while off.
 
 ## Deploy
@@ -40,3 +41,4 @@ EUI 8.8+: Resource Bars options live in LoadOnDemand `EllesmereUIOptions`. Deplo
 - `brewmasterExtendedStaggerBar` (bool, default false)
 - `brewmasterExtendedStaggerBarSettings` (table)
 - Migrates legacy `extendedStagger*` / `enhancedStagger*` once
+- Migrates the former independent Scale Maximum / Zones model to the nearest 100% Scale step

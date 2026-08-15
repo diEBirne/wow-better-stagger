@@ -85,6 +85,7 @@ WoW Retail addon — no automated test runner. Validate manually in-game.
 - Branch `eui-integration` holds Core split + local Ellesmere Resource Bars integration (`integrations/ellesmere/`).
 - Standalone engine lives under `BetterStagger/Core/`; shell is `Core.lua` + ConfigPanel/EditMode/Slash.
 - EUI product name: **Brewmaster Monk Extended Stagger Bar** (opt-in rows under Resource Bars -> CLASS RESOURCE BAR, same pattern as Ironfur / Ignore Pain). Not a separate EUI sidebar module or section header. SavedVariables: `brewmasterExtendedStaggerBar` / `brewmasterExtendedStaggerBarSettings` (migrates legacy `extendedStagger*` / `enhancedStagger*`).
+- Extended Stagger Scale is one integer setting from 2-6. Each step is exactly 100% max health; bar maximum, active colors, and divider count/positions derive from it (Scale 4 = 400%, dividers at 100/200/300%).
 - Runtime (acceptance-oriented): default OFF; updates ride the Resource Bars secondary `SetValue` hook gated on `sp.brewmasterExtendedStaggerBar`; no OnUpdate ticker; `PLAYER_SPECIALIZATION_CHANGED` only while the toggle is ON; overlay created lazily.
 - EUI 8.8+: Resource Bars options moved to LoadOnDemand `EllesmereUIOptions`; deploy still patches `EllesmereUIResourceBars` (TOC after main lua + SetValue hook). Options UI wraps `ns.ERB_BuildClassResourceSection` when `EllesmereUIOptions` loads (not only at login).
 

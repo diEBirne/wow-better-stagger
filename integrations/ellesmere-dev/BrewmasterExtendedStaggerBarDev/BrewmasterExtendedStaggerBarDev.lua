@@ -36,8 +36,10 @@ local function GetIntegration()
 end
 
 local function GetScaleMaximum(ES, sp)
-    local settings = ES.GetSettings and ES.GetSettings(sp)
-    return math.max(1, tonumber(settings and settings.scaleMaximum) or 400)
+    if ES.GetScaleMaximum then
+        return ES.GetScaleMaximum(sp)
+    end
+    return 400
 end
 
 -- Resource Bars writes the count text after our runtime hook returns, so the
